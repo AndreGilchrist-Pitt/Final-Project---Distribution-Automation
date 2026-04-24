@@ -1,0 +1,22 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# Build directories
+target/
+build/
+
+# OS specific
+.DS_Store
+Thumbs.db
+*~
