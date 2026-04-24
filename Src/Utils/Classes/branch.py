@@ -1,9 +1,13 @@
+import pandas as pd
+import numpy as np
+
 class Branch:
     _branch_status = {"Closed": True, "Open": False}
     _branch_types = ("line", "transformer", "breaker", "sectionalizer", "tie_switch")
 
     def __init__(
             self,
+            name: str,
             from_bus: str,
             to_bus: str,
             r: float,
@@ -13,13 +17,14 @@ class Branch:
             branch_type: str = "line",
             status: str = "Closed"
     ):
+        self.name = name
         self.from_bus = from_bus
         self.to_bus = to_bus
         self.r = r
         self.x = x
         self.g = g
         self.b = b
-        self.status = self._validate_status(status)  # True = closed, False = open
+        self.status = self._validate_status(status)
         self.branch_type = self._validate_branch_type(branch_type)
 
     @classmethod
@@ -49,30 +54,31 @@ class Branch:
     def close(self) -> None:
         self.status = True
 
-    def series_impedance(self) -> complex:
-        return complex(self.r, self.x)
+    @property
+    def Yseries(self) -> complex:
+        z = complex(self.r, self.x)
+        if np.isclose(z, 0.0 + 0.0j):
+            raise ValueError("Branch impedance cannot be zero.")
+        return 1 / z
+
+    @property
+    def Yshunt(self) -> complex:
+        return complex(self.g, self.b)
+
+    def calc_yprim(self) -> pd.DataFrame:
+        labels = [self.from_bus, self.to_bus]
+        Y11 = self.Yseries + self.Yshunt / 2
+        Y12 = -self.Yseries
+        return pd.DataFrame(
+            [[Y11, Y12], [Y12, Y11]],
+            index=labels,
+            columns=labels
+        )
 
     def __repr__(self) -> str:
         status_str = "Closed" if self.status else "Open"
         return (
-            f"Branch(from_bus='{self.from_bus}', to_bus='{self.to_bus}', "
-            f"r={self.r}, x={self.x}, branch_type='{self.branch_type}', "
-            f"status='{status_str}')"
+            f"Branch(name='{self.name}', from_bus='{self.from_bus}', to_bus='{self.to_bus}', "
+            f"r={self.r}, x={self.x}, g={self.g}, b={self.b}, "
+            f"branch_type='{self.branch_type}', status='{status_str}')"
         )
-
-
-if __name__ == "__main__":
-    print("=== Branch Class Validation ===\n")
-
-    branch1 = Branch("Bus1", "Bus2", 0.1, 0.2, status="Closed")
-    branch2 = Branch("Bus2", "Bus3", 0.05, 0.15, branch_type="tie_switch", status="Open")
-
-    print(branch1)
-    print(branch2)
-
-    print("\n--- Switch Operations ---")
-    print(f"Before: {branch2}")
-    branch2.close()
-    print(f"After close(): {branch2}")
-    branch2.open()
-    print(f"After open(): {branch2}")

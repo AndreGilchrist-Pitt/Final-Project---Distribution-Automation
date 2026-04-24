@@ -9,6 +9,7 @@ from Src.Utils.Classes.load import Load
 from Src.Utils.Classes.settings import Settings
 from Src.Utils.Classes.solver import Solver
 from Src.Utils.Classes.branch import Branch
+from Src.Utils.Classes.capacitorbank import CapacitorBank
 class Circuit:
     """
     Represents a complete power system network.
@@ -33,80 +34,55 @@ class Circuit:
         self.ybus = None
         self.solver: Optional[Solver] = None
         self.branches = {}
+        self.capacitor_banks = {}
+
     def calc_ybus(self):
-        """
-        Compute the system Ybus (nodal admittance) matrix.
-
-        Assembles Ybus by stamping the primitive admittance matrices of all
-        transformers and transmission lines into an N×N complex matrix,
-        where N is the number of buses.
-
-        Updates self.ybus in-place. Does not return a value.
-
-        Raises:
-            ValueError: If an element references a bus not in the circuit,
-                        if a connected bus has a zero diagonal entry,
-                        or if Ybus is not symmetric.
-        """
-        N = len(self.buses) # NxN Ybus Matrix
+        N = len(self.buses)
         self.ybus = np.zeros((N, N), dtype=complex)
         bus_index = {name: idx for idx, name in enumerate(self.buses)}
 
-        # Collect all power delivery elements
-        pd_elements = list(self.transformers.values()) + list(self.transmission_lines.values())
+        active_elements = []
 
-        # Cache each element's yprim so we don't compute it twice
+        for xfmr in self.transformers.values():
+            if xfmr.status == "Closed" or xfmr.status is True:
+                active_elements.append(xfmr)
+
+        for branch in self.branches.values():
+            if branch.branch_type != "transformer" and branch.is_closed():
+                active_elements.append(branch)
+
         element_yprims = []
-        for element in pd_elements:
+        for element in active_elements:
             yprim = element.calc_yprim()
             element_yprims.append((element, yprim))
 
-        # --- Validation: check that every referenced bus exists ---
         for element, yprim in element_yprims:
             for bus_name in yprim.index:
                 if bus_name not in bus_index:
                     raise ValueError(
-                        f"Element '{element.name}' references bus '{bus_name}' not in circuit")
-
-        # --- Stamp each primitive matrix into Ybus ---
-        # Updates Ybus with Yprim elements
+                        f"Element '{element.name}' references bus '{bus_name}' not in circuit"
+                    )
 
         for element, yprim in element_yprims:
             indices = [bus_index[b] for b in yprim.index]
-            # Use numpy advanced indexing to stamp the full 2×2 block at once
             ix = np.ix_(indices, indices)
             self.ybus[ix] += yprim.values
 
-        # --- Post-assembly consistency checks ---
-        # Check that all connected buses have non-zero diagonal entries
-        # This builds a set of only the buses that have at least one element connected to them.
-        # If isolated bus (no transformer or line), it would not appear because an isolated bus has a legitimately zero diagonal.
+        # Stamp closed capacitor banks as bus shunt susceptance
+        for cap in self.capacitor_banks.values():
+            if not cap.is_closed():
+                continue
 
-        connected_buses = set()
-        for _, yprim in element_yprims:
-            connected_buses.update(yprim.index)
+            if cap.bus1_name not in bus_index:
+                raise ValueError(
+                    f"Capacitor bank '{cap.name}' references bus '{cap.bus1_name}' not in circuit"
+                )
 
-        # For each connected bus, it checks whether the diagonal entry Ybus[i,i] is zero.
-        # The diagonal of Ybus represents the self-admittance — the sum of all admittances connected to that bus.
-        # If a bus has elements connected to it but its diagonal is still zero, something went wrong during stamping (a bug, or pathological element values that cancel out exactly).
-
-        for bus_name in connected_buses:
-            idx = bus_index[bus_name]
-            if self.ybus[idx, idx] == 0:
-                raise ValueError(f"Bus '{bus_name}' has a zero diagonal entry in Ybus")
-
-        # This checks that Ybus equals its own transpose (within a floating-point tolerance of 1e-10).
-        # Since every individual yprim is symmetric, and stamping adds them into matching [i,j] and [j,i] positions, the final Ybus must be symmetric.
-        # If it's not, it means there's a bug in the stamping logic or in one of the calc_yprim() methods.
-        # np.allclose is used instead of == because complex floating-point arithmetic can introduce tiny rounding errors (e.g., 1e-16 differences)
+            i = bus_index[cap.bus1_name]
+            self.ybus[i, i] += 1j * cap.b_shunt_pu
 
         if not np.allclose(self.ybus, self.ybus.T, atol=1e-10):
             raise ValueError("Ybus is not symmetric")
-
-        # Summary
-        # Check             What it catches                                     Why it matters
-        # Zero diagonal     A connected bus with no net self-admittance         Indicates a stamping bug or degenerate element values
-        # Symmetry          Ybus[i,j] ≠ Ybus[j,i]                               All bilateral elements produce symmetric yprim, so asymmetry = a bug
     def add_bus(self, name: str, nominal_kv: float,vpu:float = 1.0,delta:float = 0.0,bus_type: str = None,
                 area_class: str = None):
         """
@@ -124,7 +100,8 @@ class Circuit:
 
         bus = Bus(name, nominal_kv,vpu=vpu,delta=delta, bus_type=bus_type, area_class=area_class)
         self.buses[name] = bus
-    def add_transformer(self, name: str, bus1_name: str, bus2_name: str, r: float, x: float, status: str = "Closed"):
+    def add_transformer(self, name: str, bus1_name: str, bus2_name: str, r: float, x: float, status: str = "Closed",
+                        tap: float = 1.0):
         """
         Add a transformer to the circuit.
 
@@ -134,6 +111,7 @@ class Circuit:
             bus2_name: Name of the second bus
             r: Resistance in per-unit or ohms
             x: Reactance in per-unit or ohms
+            tap: Off-nominal tap ratio (default: 1.0)
 
         Raises:
             ValueError: If a transformer with the same name already exists
@@ -141,7 +119,7 @@ class Circuit:
         if name in self.transformers:
             raise ValueError(f"Transformer '{name}' already exists in the circuit")
 
-        transformer = Transformer(name, bus1_name, bus2_name, r, x,status)
+        transformer = Transformer(name, bus1_name, bus2_name, r, x,status,tap=tap)
         self.transformers[name] = transformer
         self.add_branch(name, bus1_name, bus2_name, r, x, branch_type="transformer", status=status)
     def add_transmission_line(self, name: str, bus1_name: str, bus2_name: str,
@@ -166,7 +144,7 @@ class Circuit:
 
         line = TransmissionLine(name, bus1_name, bus2_name, r, x, g, b,status)
         self.transmission_lines[name] = line
-        self.add_branch(name, bus1_name, bus2_name, r, x, branch_type="line", status=status)
+        self.add_branch(name, bus1_name, bus2_name, r, x, g, b, branch_type="line", status=status)
     def add_generator(self, name: str, bus1_name: str, voltage_setpoint: float, mw_setpoint: float,x_subtransient: float = 0.0):
         """
         Add a generator to the circuit.
@@ -309,6 +287,8 @@ class Circuit:
         for load in self.loads.values():
             specs[load.bus1_name][0] -= load.p  # subtract load P
             specs[load.bus1_name][1] -= load.q  # subtract load Q
+
+
         non_slack_buses = [b for b in buses.values() if b.bus_type != "Slack"]
         pq_buses = [b for b in buses.values() if b.bus_type == "PQ"]
 
@@ -338,19 +318,21 @@ class Circuit:
         bus_index = {name: idx for idx, name in enumerate(self.buses)}
         ybus_fault = np.zeros((N, N), dtype=complex)
 
-        for xfmr in self.transformers.values():
-            i = bus_index[xfmr.bus1_name]
-            j = bus_index[xfmr.bus2_name]
-            y = 1 / (1j * xfmr.x)
-            ybus_fault[i, i] += y
-            ybus_fault[j, j] += y
-            ybus_fault[i, j] -= y
-            ybus_fault[j, i] -= y
+        for branch in self.branches.values():
+            if not branch.status:
+                continue
 
-        for line in self.transmission_lines.values():
-            i = bus_index[line.bus1_name]
-            j = bus_index[line.bus2_name]
-            y = 1 / (1j * line.x)
+            i = bus_index[branch.from_bus]
+            j = bus_index[branch.to_bus]
+
+            # Fault studies usually ignore resistance and shunt charging,
+            # using reactance-only models
+            if branch.x == 0.0:
+                raise ValueError(
+                    f"Branch between {branch.from_bus} and {branch.to_bus} has x=0.0 in fault model."
+                )
+
+            y = 1 / (1j * branch.x)
             ybus_fault[i, i] += y
             ybus_fault[j, j] += y
             ybus_fault[i, j] -= y
@@ -459,8 +441,40 @@ class Circuit:
         if name in self.branches:
             raise ValueError(f"Branch '{name}' already exists in the circuit")
 
-        branch = Branch(from_bus, to_bus, r, x, g, b, branch_type=branch_type, status=status)
+        branch = Branch(name,from_bus, to_bus, r, x, g, b, branch_type=branch_type, status=status)
         self.branches[name] = branch
+
+    def add_capacitor_bank(self, name: str, bus1_name: str, mvar_nominal: float, status: str = "Closed"):
+        """
+        Add a bus-connected switched shunt capacitor bank.
+
+        Args:
+            name: Capacitor bank name
+            bus1_name: Name of the connected bus
+            mvar_nominal: Nominal reactive injection in Mvar
+            status: "Closed" or "Open"
+
+        Raises:
+            ValueError: If a capacitor with the same name already exists
+        """
+        if name in self.capacitor_banks:
+            raise ValueError(f"Capacitor bank '{name}' already exists in the circuit")
+
+        if bus1_name not in self.buses:
+            raise ValueError(f"Bus '{bus1_name}' not found in the circuit")
+
+        cap = CapacitorBank(name, bus1_name, mvar_nominal, status)
+        self.capacitor_banks[name] = cap
+
+    def open_branch(self, name: str) -> None:
+        if name not in self.branches:
+            raise ValueError(f"Branch '{name}' not found")
+        self.branches[name].open()
+
+    def close_branch(self, name: str) -> None:
+        if name not in self.branches:
+            raise ValueError(f"Branch '{name}' not found")
+        self.branches[name].close()
 if __name__ == "__main__":
     # Validation tests from Milestone 2
     print("=== Moved to MilestoneValidationHelp ===\n")

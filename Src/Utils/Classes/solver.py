@@ -56,11 +56,11 @@ class Solver:
         Returns:
             self, for method chaining.
         """
-        if circuit.ybus is None:
-            raise ValueError("call circuit.calc_ybus() before Solver.run()")
-
         if self.mode == "power_flow":
+            if circuit.ybus is None:
+                raise ValueError("call circuit.calc_ybus() before Solver.run()")
             self._run_power_flow(circuit, tol, max_iter, verbose)
+
         elif self.mode == "fault":
             self._run_fault(circuit, faulted_bus_name, prefault_voltage)
 

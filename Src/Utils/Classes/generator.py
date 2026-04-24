@@ -1,5 +1,4 @@
 from Src.Utils.Classes.settings import Settings
-from Src.Utils.Classes.areascalar import AreaScalar
 class Generator:
     """
     Represents a generator in a power system network.
@@ -23,7 +22,7 @@ class Generator:
         self.voltage_setpoint = voltage_setpoint
         self.mw_setpoint = mw_setpoint
         self.x_subtransient = x_subtransient
-        self.p: float = self.calc_p() * AreaScalar().scale(bus1_name)
+        self.p: float = self.calc_p()
     def calc_p(self) -> float:
         """
         Calculate generator active power in per-unit.
