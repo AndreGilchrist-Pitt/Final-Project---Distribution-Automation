@@ -545,7 +545,7 @@ L_Right_9com = Open L_9com_10res = Open L_8ind_13ind = Closed
 
 Run:
 ```bash
-python Src/Validation/TestScripts/case2_test.py
+python -m Src.Validation.TestScripts.case2_test
 ```
 
 This case verifies that the simulator can:
@@ -558,6 +558,22 @@ This case verifies that the simulator can:
 
 In the validated restoration case, the solver converged in 3 iterations and calculated approximately `0.336278 MW` of
 real losses. This agrees with the PowerWorld one-line display for the restoration configuration.
+
+### 7.5 Legacy Test Case
+
+The original Project 2 PowerWorld simulator test case can still be run as a legacy compatibility check. This case is
+included to confirm that the enhanced simulator remains backward-compatible with the earlier Project 2 model.
+
+This legacy case is not part of the PowerWorld validation workflow used for the distribution automation cases.
+
+Run:
+
+```bash
+python -m Src.Validation.TestScripts.legacy_test
+```
+
+This test verifies that the updated simulator can still run the original Project 2-style power flow case after the
+distribution automation enhancements.
 
 ## 8. Validation Procedure
 

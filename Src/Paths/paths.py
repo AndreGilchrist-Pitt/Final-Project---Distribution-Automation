@@ -37,8 +37,7 @@ POWERWORLD_CASE2_BUSES_JSON = CASE2_DATA_DIR / "Buses.json"
 POWERWORLD_CASE2_CASE_SUMMARY_JSON = CASE2_DATA_DIR / "Case_Summary.json"
 
 # Legacy/test directories
-UNITTEST_DIR = PROJECT_ROOT / "UnitTest"
-UNITTEST_CLASSES_DIR = UNITTEST_DIR / "Classes"
+LEGACY_TEST = TEST_SCRIPTS_DIR / "legacy_test.py"
 
 
 def ensure_directory_exists(directory: str | Path) -> Path:
