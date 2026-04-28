@@ -17,11 +17,16 @@ class Jacobian:
         self.J = None
 
     def _non_slack_buses(self, buses: dict):
-        return [bus for bus in buses.values() if bus.bus_type != "Slack"]
+        return [
+            bus for bus in buses.values()
+            if bus.bus_type != "Slack" and getattr(bus, "in_service", True)
+        ]
 
     def _pq_buses(self, buses: dict):
-        return [bus for bus in buses.values() if bus.bus_type == "PQ"]
-
+        return [
+            bus for bus in buses.values()
+            if bus.bus_type == "PQ" and getattr(bus, "in_service", True)
+        ]
     def PQ_BUSES(self, buses: dict):
         return self._pq_buses(buses)
 

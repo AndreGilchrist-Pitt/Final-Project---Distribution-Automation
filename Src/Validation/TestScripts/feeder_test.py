@@ -40,6 +40,11 @@ circuit.add_bus("12res", 13.8, vpu=1.0, delta=0.0, bus_type="PQ", area_class="Re
 circuit.add_bus("13ind", 13.8, vpu=1.0, delta=0.0, bus_type="PQ", area_class="Industrial")
 
 # -------------------------
+# Generators
+# -------------------------
+circuit.add_generator("G_Source", "1_TransmissionBus", voltage_setpoint=1.0, mw_setpoint=0.0)
+
+# -------------------------
 # Transformers
 # -------------------------
 # Our Transformer.calc_yprim applies the tap to bus1 by default, which matches.
@@ -56,7 +61,7 @@ circuit.add_branch(
     "Left", "Right",
     0.0, 0.01, 0.0, 0.0,
     branch_type="breaker",
-    status="Closed"
+    status="Open"
 )
 
 # Left feeder
@@ -79,7 +84,7 @@ circuit.add_branch(
     "8ind", "13ind",
     0.0964, 0.1995, 0.0, 0.0,
     branch_type="tie_switch",
-    status="Closed"
+    status="Open"
 )
 
 # -------------------------
@@ -106,7 +111,7 @@ circuit.add_capacitor_bank("Cap_8ind", "8ind", 1.0, status="Closed")
 circuit.add_capacitor_bank("Cap_10res", "10res", 1.0, status="Closed")
 circuit.add_capacitor_bank("Cap_12res", "12res", 1.0, status="Closed")
 circuit.add_capacitor_bank("Cap_13ind", "13ind", 1.0, status="Closed")
-
+circuit.print_elements()
 # -------------------------
 # Solve
 # -------------------------

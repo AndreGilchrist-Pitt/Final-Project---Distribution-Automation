@@ -1,0 +1,21 @@
+[
+    {
+        "Number of Bus": 1,
+        "Name of Bus": "1_TransmissionBus",
+        "ID": 1,
+        "Status": "Closed",
+        "Gen MW": 10.16,
+        "Gen Mvar": -1.55,
+        "Min MW": 0,
+        "Max MW": 1000,
+        "AGC": "YES",
+        "AVR": "YES",
+        "RegBus Num": 1,
+        "Set Volt": 1,
+        "Min Mvar": -9900,
+        "Max Mvar": 9900,
+        "Enforce MW Limits": "YES",
+        "Part. Factor": 10,
+        "Cost Model": "Cubic"
+    }
+]

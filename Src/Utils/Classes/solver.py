@@ -81,7 +81,9 @@ class Solver:
         zbus = circuit.calc_zbus(ybus_fault)
         self.fault_current = circuit.calc_fault_current(zbus, faulted_bus_name, prefault_voltage)
         self.fault_voltages = circuit.calc_fault_voltages(zbus, faulted_bus_name, prefault_voltage)
-
+    @property
+    def jacobian(self):
+        return self._pf.Jacobian
     def __repr__(self):
         if self.mode == "power_flow":
             return (f"Solver(mode='power_flow', converged={self.converged}, "

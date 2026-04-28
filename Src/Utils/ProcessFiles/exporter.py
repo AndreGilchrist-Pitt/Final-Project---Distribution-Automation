@@ -2,7 +2,8 @@ from pathlib import Path
 
 from Src.Paths.paths import POWERWORLD_BASELINE_EXCEL_FILE
 from Src.Utils.ProcessFiles.excel_file_processor import ExcelFileProcessor
-
+from Src.Paths.paths import POWERWORLD_CASE1_EXCEL_FILE
+from Src.Paths.paths import POWERWORLD_CASE2_EXCEL_FILE
 
 def make_safe_json_file_name(sheet_name: str) -> str:
     """
@@ -76,6 +77,6 @@ def export_all_sheets_to_source_directory(
 
 if __name__ == "__main__":
     export_all_sheets_to_source_directory(
-        excel_file_path=POWERWORLD_BASELINE_EXCEL_FILE,
+        excel_file_path=POWERWORLD_CASE2_EXCEL_FILE,
         default_header_row=1,
     )

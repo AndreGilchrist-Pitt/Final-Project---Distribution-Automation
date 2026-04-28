@@ -1,0 +1,23 @@
+[
+    {
+        "Gen MW": 10.1,
+        "Gen Mvar": -1.5,
+        "Load MW": 10,
+        "Load Mvar": 4.4,
+        "Dist MW": 0,
+        "Dist Mvar": 0,
+        "Shunts Actual Mvar": -6.5,
+        "Shunts Actual MW": 0,
+        "Losses Mvar": 0.647,
+        "Losses MW": 0.161,
+        "# of Buses": 13,
+        "# of Loads": 10,
+        "# of Gens": 1,
+        "# of Switched Shunts": 6,
+        "# of AC Lines": 12,
+        "# of Series Caps": 0,
+        "# of LTCs": 2,
+        "# of LTCs (Mvar)": 0,
+        "# of Phase Shifters": 0
+    }
+]

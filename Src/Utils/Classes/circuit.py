@@ -10,6 +10,7 @@ from Src.Utils.Classes.settings import Settings
 from Src.Utils.Classes.solver import Solver
 from Src.Utils.Classes.branch import Branch
 from Src.Utils.Classes.capacitorbank import CapacitorBank
+from Src.Utils.Classes.areascalar import AreaScalar
 class Circuit:
     """
     Represents a complete power system network.
@@ -282,15 +283,30 @@ class Circuit:
         specs = {bus_name: [0.0, 0.0] for bus_name in buses}
 
         for gen in self.generators.values():
-            specs[gen.bus1_name][0] += gen.p  # add generation
+            bus = self.buses[gen.bus1_name]
+            if getattr(bus, "in_service", True):
+                specs[gen.bus1_name][0] += gen.p
 
         for load in self.loads.values():
-            specs[load.bus1_name][0] -= load.p  # subtract load P
-            specs[load.bus1_name][1] -= load.q  # subtract load Q
+            bus = self.buses[load.bus1_name]
 
+            if not getattr(bus, "in_service", True):
+                continue
 
-        non_slack_buses = [b for b in buses.values() if b.bus_type != "Slack"]
-        pq_buses = [b for b in buses.values() if b.bus_type == "PQ"]
+            specs[load.bus1_name][0] -= load.p
+            specs[load.bus1_name][1] -= load.q
+
+        # Only energized non-slack buses get ΔP equations
+        non_slack_buses = [
+            b for b in buses.values()
+            if b.bus_type != "Slack" and getattr(b, "in_service", True)
+        ]
+
+        # Only energized PQ buses get ΔQ equations
+        pq_buses = [
+            b for b in buses.values()
+            if b.bus_type == "PQ" and getattr(b, "in_service", True)
+        ]
 
         f = []
 
@@ -417,8 +433,8 @@ class Circuit:
         Fault study uses self.ybus_fault (adds generator subtransient reactances).
         """
         if mode == "power_flow":
-            if self.ybus is None:
-                self.calc_ybus()
+            self.update_bus_energization()
+            self.calc_ybus()
         elif mode == "fault":
             self.calc_ybus_fault()
 
@@ -470,11 +486,13 @@ class Circuit:
         if name not in self.branches:
             raise ValueError(f"Branch '{name}' not found")
         self.branches[name].open()
+        self.ybus = None
 
     def close_branch(self, name: str) -> None:
         if name not in self.branches:
             raise ValueError(f"Branch '{name}' not found")
         self.branches[name].close()
+        self.ybus = None
 
     def active_power_delivery_elements(self):
         """
@@ -581,8 +599,226 @@ class Circuit:
         print(f"Total Loss: {total_loss_pu.real:.8f} pu")
         print(f"Total Loss: {total_loss_mw:.6f} MW")
         print(f"Reactive Loss: {total_loss_mvar:.6f} Mvar")
-if __name__ == "__main__":
-    # Validation tests from Milestone 2
-    print("=== Moved to MilestoneValidationHelp ===\n")
+
+    def find_energized_buses(self) -> set[str]:
+        """
+        Return all buses reachable from any Slack bus through closed branches.
+
+        Buses not returned by this function are de-energized/islanded
+        from the source and should not be included in the power-flow solve.
+        """
+        slack_buses = [
+            bus.name for bus in self.buses.values()
+            if bus.bus_type == "Slack"
+        ]
+
+        if not slack_buses:
+            raise ValueError("No Slack bus found in circuit.")
+
+        adjacency = {bus_name: set() for bus_name in self.buses}
+
+        for branch in self.branches.values():
+            if not branch.is_closed():
+                continue
+
+            adjacency[branch.from_bus].add(branch.to_bus)
+            adjacency[branch.to_bus].add(branch.from_bus)
+
+        energized = set()
+        stack = list(slack_buses)
+
+        while stack:
+            current = stack.pop()
+
+            if current in energized:
+                continue
+
+            energized.add(current)
+
+            for neighbor in adjacency[current]:
+                if neighbor not in energized:
+                    stack.append(neighbor)
+
+        return energized
+
+    def update_bus_energization(self) -> set[str]:
+        """
+        Update each bus with an in_service flag based on source connectivity.
+
+        Returns:
+            energized: set of energized bus names
+        """
+        energized = self.find_energized_buses()
+
+        for bus in self.buses.values():
+            bus.in_service = bus.name in energized
+
+            if not bus.in_service:
+                bus.vpu = 0.0
+                bus.delta = 0.0
+
+        return energized
+    def print_elements(self) -> None:
+        """
+        Print all elements in the circuit and their main parameters.
+        """
+
+        print("=" * 80)
+        print(f"Circuit: {self.name}")
+        print("=" * 80)
+
+        print("\nSettings")
+        print("-" * 80)
+        print(f"Frequency : {Settings.freq} Hz")
+        print(f"Sbase     : {Settings.sbase} MVA")
+
+        print("\nArea Scalars")
+        print("-" * 80)
+        print(f"Residential : {AreaScalar.res_scale}")
+        print(f"Commercial  : {AreaScalar.com_scale}")
+        print(f"Industrial  : {AreaScalar.ind_scale}")
+
+        print("\nBuses")
+        print("-" * 80)
+        if not self.buses:
+            print("No buses defined.")
+        else:
+            print(f"{'Name':20s} {'Index':>5s} {'kV':>10s} {'Type':>8s} {'Area':>15s} {'Vpu':>10s} {'Angle':>10s}")
+            for bus in self.buses.values():
+                print(
+                    f"{bus.name:20s} "
+                    f"{bus.bus_index:5d} "
+                    f"{bus.nominal_kv:10.4f} "
+                    f"{bus.bus_type:>8s} "
+                    f"{str(bus.area_class):>15s} "
+                    f"{bus.vpu:10.5f} "
+                    f"{bus.delta:10.4f}"
+                )
+
+        print("\nTransformers")
+        print("-" * 80)
+        if not self.transformers:
+            print("No transformers defined.")
+        else:
+            print(
+                f"{'Name':20s} {'Bus 1':20s} {'Bus 2':20s} "
+                f"{'R':>10s} {'X':>10s} {'Tap':>10s} {'Tap Side':>10s} {'Status':>10s}"
+            )
+            for xfmr in self.transformers.values():
+                status = "Closed" if xfmr.status == "Closed" or xfmr.status is True else "Open"
+                print(
+                    f"{xfmr.name:20s} "
+                    f"{xfmr.bus1_name:20s} "
+                    f"{xfmr.bus2_name:20s} "
+                    f"{xfmr.r:10.5f} "
+                    f"{xfmr.x:10.5f} "
+                    f"{xfmr.tap:10.5f} "
+                    f"{xfmr.tap_side:>10s} "
+                    f"{status:>10s}"
+                )
+
+        print("\nBranches")
+        print("-" * 80)
+        if not self.branches:
+            print("No branches defined.")
+        else:
+            print(
+                f"{'Name':20s} {'From Bus':20s} {'To Bus':20s} "
+                f"{'Type':>15s} {'R':>10s} {'X':>10s} {'G':>10s} {'B':>10s} {'Status':>10s}"
+            )
+            for branch in self.branches.values():
+                status = "Closed" if branch.status else "Open"
+                print(
+                    f"{branch.name:20s} "
+                    f"{branch.from_bus:20s} "
+                    f"{branch.to_bus:20s} "
+                    f"{branch.branch_type:>15s} "
+                    f"{branch.r:10.5f} "
+                    f"{branch.x:10.5f} "
+                    f"{branch.g:10.5f} "
+                    f"{branch.b:10.5f} "
+                    f"{status:>10s}"
+                )
+
+        print("\nTransmission Lines")
+        print("-" * 80)
+        if not self.transmission_lines:
+            print("No transmission lines defined.")
+        else:
+            print(
+                f"{'Name':20s} {'Bus 1':20s} {'Bus 2':20s} "
+                f"{'R':>10s} {'X':>10s} {'G':>10s} {'B':>10s} {'Status':>10s}"
+            )
+            for line in self.transmission_lines.values():
+                print(
+                    f"{line.name:20s} "
+                    f"{line.bus1_name:20s} "
+                    f"{line.bus2_name:20s} "
+                    f"{line.r:10.5f} "
+                    f"{line.x:10.5f} "
+                    f"{line.g:10.5f} "
+                    f"{line.b:10.5f} "
+                    f"{line.status:>10s}"
+                )
+
+        print("\nGenerators")
+        print("-" * 80)
+        if not self.generators:
+            print("No generators defined.")
+        else:
+            print(
+                f"{'Name':20s} {'Bus':20s} "
+                f"{'V Setpoint':>12s} {'MW':>10s} {'P pu':>10s} {'Xsub':>10s}"
+            )
+            for gen in self.generators.values():
+                print(
+                    f"{gen.name:20s} "
+                    f"{gen.bus1_name:20s} "
+                    f"{gen.voltage_setpoint:12.5f} "
+                    f"{gen.mw_setpoint:10.5f} "
+                    f"{gen.p:10.5f} "
+                    f"{gen.x_subtransient:10.5f}"
+                )
+
+        print("\nLoads")
+        print("-" * 80)
+        if not self.loads:
+            print("No loads defined.")
+        else:
+            print(
+                f"{'Name':20s} {'Bus':20s} "
+                f"{'MW':>10s} {'Mvar':>10s} {'P pu':>10s} {'Q pu':>10s}"
+            )
+            for load in self.loads.values():
+                print(
+                    f"{load.name:20s} "
+                    f"{load.bus1_name:20s} "
+                    f"{load.mw:10.5f} "
+                    f"{load.mvar:10.5f} "
+                    f"{load.p:10.5f} "
+                    f"{load.q:10.5f}"
+                )
+
+        print("\nCapacitor Banks")
+        print("-" * 80)
+        if not self.capacitor_banks:
+            print("No capacitor banks defined.")
+        else:
+            print(
+                f"{'Name':20s} {'Bus':20s} "
+                f"{'Mvar Nominal':>15s} {'B Shunt pu':>15s} {'Status':>10s}"
+            )
+            for cap in self.capacitor_banks.values():
+                status = "Closed" if cap.status else "Open"
+                print(
+                    f"{cap.name:20s} "
+                    f"{cap.bus1_name:20s} "
+                    f"{cap.mvar_nominal:15.5f} "
+                    f"{cap.b_shunt_pu:15.5f} "
+                    f"{status:>10s}"
+                )
+
+        print("=" * 80)
+
 
     

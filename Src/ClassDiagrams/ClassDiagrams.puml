@@ -1,196 +1,432 @@
 @startuml
-title Utils Classes (Power system model + NR power flow + Fault Analysis)
+title Distribution Automation - Class Diagram
 
-class Settings {
-  +freq : float
-  +sbase : float
-  --
-  +__init__(freq: float = 60.0, sbase: float = 100.0)
-  +__repr__()
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+' ============================================================
+' Paths / Configuration
+' ============================================================
+
+package "Paths" {
+  class ProjectPaths <<module>> {
+    +PROJECT_ROOT : Path
+    +SRC_DIR : Path
+    +DATA_DIR : Path
+    +POWERWORLD_DATA_DIR : Path
+    +BASELINE_DATA_DIR : Path
+    +CASE1_DATA_DIR : Path
+    +CASE2_DATA_DIR : Path
+    +POWERWORLD_BASELINE_EXCEL_FILE : Path
+    +POWERWORLD_CASE1_EXCEL_FILE : Path
+    +POWERWORLD_CASE2_EXCEL_FILE : Path
+    --
+    +ensure_directory_exists(directory: str | Path) : Path
+    +ensure_parent_directory_exists(file_path: str | Path) : Path
+  }
+
+  class Settings {
+    +{static} freq : float
+    +{static} sbase : float
+    --
+    +__init__(freq: float = 60.0, sbase: float = 100.0)
+    +__repr__() : str
+  }
+
+  class AreaScalar {
+    +{static} res_scale : float
+    +{static} com_scale : float
+    +{static} ind_scale : float
+    --
+    +__init__(res_scale: float = None, com_scale: float = None, ind_scale: float = None)
+    +scale(bus_name: str) : float
+    +__repr__() : str
+  }
 }
 
-class Bus {
-  -{static} _bus_counter : int
-  -{static} _bus_registry : dict
-  -{static} _valid_bus_types : dict
-  +name : str
-  +nominal_kv : float
-  +bus_index : int
-  +vpu : float
-  +delta : float
-  +bus_type : str
-  --
-  +__init__(name: str, nominal_kv: float, vpu: float = 1.0, delta: float = 0.0, bus_type: str = None)
-  +{static} get_bus_index(name: str)
-  -{static} _validate_bus_type(bus_type: str) : str
+' ============================================================
+' Network Elements
+' ============================================================
+
+package "Network Elements" {
+  class Bus {
+    -{static} _bus_counter : int
+    -{static} _bus_registry : dict
+    -{static} _bus_objects : dict
+    -{static} _valid_bus_types : dict
+    +name : str
+    +nominal_kv : float
+    +bus_index : int
+    +vpu : float
+    +delta : float
+    +bus_type : str
+    +area_class : str
+    --
+    +__init__(name: str, nominal_kv: float, vpu: float = 1.0, delta: float = 0.0, bus_type: str = None, area_class: str = None)
+    +{static} get_bus(name: str) : Bus
+    +{static} get_bus_index(name: str) : int
+    -{static} _validate_bus_type(bus_type: str) : str
+  }
+
+  class Generator {
+    +name : str
+    +bus1_name : str
+    +voltage_setpoint : float
+    +mw_setpoint : float
+    +x_subtransient : float
+    +p : float
+    --
+    +__init__(name: str, bus1_name: str, voltage_setpoint: float, mw_setpoint: float, x_subtransient: float = 0.0)
+    +calc_p() : float
+    +__repr__() : str
+  }
+
+  class Load {
+    +name : str
+    +bus1_name : str
+    +mw : float
+    +mvar : float
+    +p : float
+    +q : float
+    --
+    +__init__(name: str, bus1_name: str, mw: float, mvar: float)
+    +calc_p() : float
+    +calc_q() : float
+    +__repr__() : str
+  }
+
+  class Transformer {
+    +name : str
+    +bus1_name : str
+    +bus2_name : str
+    +r : float
+    +x : float
+    +status : str
+    +tap : float
+    +tap_side : str
+    -_yseries : complex
+    +Yseries : complex <<property>>
+    --
+    +__init__(name: str, bus1_name: str, bus2_name: str, r: float, x: float, status: str = "Closed", tap: float = 1.0, tap_side: str = "bus1")
+    -_calc_Yseries() : complex
+    +calc_yprim() : DataFrame
+    +__repr__() : str
+  }
+
+  class TransmissionLine {
+    +name : str
+    +bus1_name : str
+    +bus2_name : str
+    +r : float
+    +x : float
+    +g : float
+    +b : float
+    +status : str
+    -_yseries : complex
+    -_yshunt : complex
+    +Yseries : complex <<property>>
+    +Yshunt : complex <<property>>
+    --
+    +__init__(name: str, bus1_name: str, bus2_name: str, r: float, x: float, g: float, b: float, status: str = "Closed")
+    -_calc_Yseries() : complex
+    -_calc_Yshunt() : complex
+    +calc_yprim() : DataFrame
+    +__repr__() : str
+  }
+
+  class Branch {
+    +name : str
+    +from_bus : str
+    +to_bus : str
+    +r : float
+    +x : float
+    +g : float
+    +b : float
+    +branch_type : str
+    +status : bool
+    --
+    +__init__(name: str, from_bus: str, to_bus: str, r: float, x: float, g: float = 0.0, b: float = 0.0, branch_type: str = "line", status: str = "Closed")
+    +is_closed() : bool
+    +open() : void
+    +close() : void
+    +calc_yprim() : DataFrame
+  }
+
+  class CapacitorBank {
+    +name : str
+    +bus1_name : str
+    +mvar_nominal : float
+    +status : bool
+    +b_shunt_pu : float
+    --
+    +__init__(name: str, bus1_name: str, mvar_nominal: float, status: str = "Closed")
+    +is_closed() : bool
+    +open() : void
+    +close() : void
+  }
 }
 
-class Generator {
-  +name : str
-  +bus1_name : str
-  +voltage_setpoint : float
-  +mw_setpoint : float
-  +x_subtransient : float
-  +p : float
-  --
-  +__init__(name: str, bus1_name: str, voltage_setpoint: float, mw_setpoint: float, x_subtransient: float = 0.0)
-  +calc_p() : float
-  +__repr__()
+' ============================================================
+' Core Model
+' ============================================================
+
+package "Core Model" {
+  class Circuit {
+    +name : str
+    +buses : dict
+    +transformers : dict
+    +transmission_lines : dict
+    +branches : dict
+    +generators : dict
+    +loads : dict
+    +capacitor_banks : dict
+    +ybus : ndarray
+    +solver : Solver
+    +voltage_vector_polar : list <<property>>
+    +voltage_vector_rectangular : ndarray <<property>>
+    --
+    +__init__(name: str)
+    +add_bus(name: str, nominal_kv: float, vpu: float = 1.0, delta: float = 0.0, bus_type: str = None, area_class: str = None) : void
+    +add_transformer(name: str, bus1_name: str, bus2_name: str, r: float, x: float, status: str = "Closed", tap: float = 1.0, tap_side: str = "bus1") : void
+    +add_transmission_line(name: str, bus1_name: str, bus2_name: str, r: float, x: float, g: float, b: float, status: str = "Closed") : void
+    +add_branch(name: str, from_bus: str, to_bus: str, r: float, x: float, g: float = 0.0, b: float = 0.0, branch_type: str = "line", status: str = "Closed") : void
+    +add_generator(name: str, bus1_name: str, voltage_setpoint: float, mw_setpoint: float, x_subtransient: float = 0.0) : void
+    +add_load(name: str, bus1_name: str, mw: float, mvar: float) : void
+    +add_capacitor_bank(name: str, bus1_name: str, mvar_nominal: float, status: str = "Closed") : void
+    +open_branch(name: str) : void
+    +close_branch(name: str) : void
+    --
+    +calc_ybus() : void
+    +calc_ybus_fault() : ndarray
+    +calc_zbus(ybus_fault: ndarray) : ndarray
+    +calc_fault_current(zbus: ndarray, faulted_bus_name: str, prefault_voltage: float = 1.0) : complex
+    +calc_fault_voltages(zbus: ndarray, faulted_bus_name: str, prefault_voltage: float = 1.0) : dict
+    --
+    +bus_angles() : ndarray
+    +bus_voltages() : ndarray
+    -_real_power_injection(bus: Bus, ybus: ndarray, voltages: ndarray) : float
+    -_reactive_power_injection(bus: Bus, ybus: ndarray, voltages: ndarray) : float
+    +compute_power_injection(bus: Bus, ybus: ndarray, voltages: ndarray) : tuple
+    +compute_power_mismatch(buses: dict, ybus: ndarray, voltages: ndarray) : ndarray
+    --
+    +active_power_delivery_elements() : list
+    +calc_branch_losses() : dict
+    +calc_case_losses() : tuple
+    +print_case_losses() : void
+    +print_elements() : void
+    +solve(mode: str = "power_flow", tol: float = 1e-4, max_iter: int = 50, faulted_bus_name: str = None, prefault_voltage: float = 1.0, verbose: bool = False) : Solver
+  }
 }
 
-class Load {
-  +name : str
-  +bus1_name : str
-  +mw : float
-  +mvar : float
-  +p : float
-  +q : float
-  --
-  +__init__(name: str, bus1_name: str, mw: float, mvar: float)
-  +calc_p() : float
-  +calc_q() : float
-  +__repr__()
+' ============================================================
+' Power Flow / Solver
+' ============================================================
+
+package "Power Flow and Solver" {
+  class Jacobian {
+    +J : ndarray
+    --
+    +__init__()
+    -_non_slack_buses(buses: dict) : list
+    -_pq_buses(buses: dict) : list
+    +NON_SLACK_BUSES(buses: dict) : list
+    +PQ_BUSES(buses: dict) : list
+    -_power_injections(ybus: ndarray, angles: ndarray, voltages: ndarray) : tuple
+    -_build_j1(ybus: ndarray, angles: ndarray, voltages: ndarray, p_buses: list) : ndarray
+    -_build_j2(ybus: ndarray, angles: ndarray, voltages: ndarray, p_buses: list, pq_buses: list) : ndarray
+    -_build_j3(ybus: ndarray, angles: ndarray, voltages: ndarray, pq_buses: list, p_buses: list) : ndarray
+    -_build_j4(ybus: ndarray, angles: ndarray, voltages: ndarray, pq_buses: list) : ndarray
+    +calculate_jacobian(buses: dict, ybus: ndarray, angles: ndarray, voltages: ndarray) : ndarray
+  }
+
+  class PowerFlow {
+    -_jac : Jacobian
+    +iterations : int
+    +converged : bool
+    +final_mismatch_max : float
+    +Jacobian : Jacobian <<property>>
+    --
+    +__init__()
+    +{static} _non_slack_buses(buses: dict) : list
+    +{static} _pq_buses(buses: dict) : list
+    +mismatch_vector(circuit: Circuit) : ndarray
+    +solve(circuit: Circuit, tol: float = 0.001, max_iter: int = 50, verbose: bool = False) : PowerFlow
+  }
+
+  class Solver {
+    +{static} VALID_MODES : set
+    -_pf : PowerFlow
+    +mode : str
+    +converged : bool
+    +iterations : int
+    +fault_current : complex
+    +fault_voltages : dict
+    +jacobian : Jacobian <<property>>
+    --
+    +__init__(mode: str = "power_flow")
+    +run(circuit: Circuit, tol: float = 1e-4, max_iter: int = 50, faulted_bus_name: str = None, prefault_voltage: float = 1.0, verbose: bool = False) : Solver
+    -_run_power_flow(circuit: Circuit, tol: float, max_iter: int, verbose: bool) : void
+    -_run_fault(circuit: Circuit, faulted_bus_name: str, prefault_voltage: float) : void
+    +__repr__() : str
+  }
 }
 
-class Transformer {
-  +name : str
-  +bus1_name : str
-  +bus2_name : str
-  +r : float
-  +x : float
-  -_yseries : complex
-  +Yseries : complex <<property>>
-  --
-  +__init__(name: str, bus1_name: str, bus2_name: str, r: float, x: float)
-  -_calc_Yseries() : complex
-  +calc_yprim() : pd.DataFrame
-  +__repr__()
+' ============================================================
+' File Processing
+' ============================================================
+
+package "File Processing" {
+  class ExcelFileProcessor {
+    +file_path : Path
+    -_excel_file : ExcelFile
+    +sheet_names : list <<property>>
+    --
+    +__init__(file_path: str | Path)
+    -{static} _require_openpyxl() : void
+    -{static} _normalize_columns(df: DataFrame) : DataFrame
+    -{static} _filter_columns(df: DataFrame, columns: list = None, require_columns: bool = False) : DataFrame
+    -{static} _drop_empty_rows(df: DataFrame) : DataFrame
+    -{static} _normalize_empty_values(df: DataFrame) : DataFrame
+    +read_sheet(sheet_name: str | int = 0, columns: list = None, require_columns: bool = False, header_row: int = 0, drop_empty_rows: bool = True) : DataFrame
+    +read_all_sheets(columns_by_sheet: dict = None, require_columns: bool = False, header_row_by_sheet: dict = None, default_header_row: int = 0, drop_empty_rows: bool = True) : dict
+    +preview_sheet(sheet_name: str | int = 0, rows: int = 5, columns: list = None, require_columns: bool = False, header_row: int = 0, drop_empty_rows: bool = True) : DataFrame
+    +print_summary(header_row_by_sheet: dict = None, default_header_row: int = 0) : void
+    +sheet_to_dicts(sheet_name: str | int = 0, columns: list = None, require_columns: bool = False, header_row: int = 0, drop_empty_rows: bool = True) : list
+    +export_sheet_to_json(sheet_name: str | int, output_path: str | Path, columns: list = None, require_columns: bool = False, header_row: int = 0, drop_empty_rows: bool = True) : void
+  }
+
+  class Exporter <<module>> {
+    +make_safe_json_file_name(sheet_name: str) : str
+    +export_all_sheets_to_source_directory(excel_file_path: str | Path, default_header_row: int = 1) : void
+  }
+
+  class CompareHelp <<module>> {
+    +load_powerworld_buses_json(path: str | Path) : dict
+    +load_powerworld_case_summary_json(path: str | Path) : dict
+    +load_powerworld_ybus_json(path: str | Path) : tuple
+    +compare_voltage_vector_polar(circuit: Circuit, powerworld_buses: dict, voltage_tolerance: float, angle_tolerance: float) : bool
+    +compare_case_losses(circuit: Circuit, powerworld_case_summary: dict, mw_tolerance: float, mvar_tolerance: float) : bool
+    +compare_case_summary_counts(circuit: Circuit, powerworld_case_summary: dict) : bool
+    +compare_ybus(circuit: Circuit, powerworld_ybus: ndarray, powerworld_bus_names: list, tolerance: float) : bool
+  }
 }
 
-class TransmissionLine {
-  +name : str
-  +bus1_name : str
-  +bus2_name : str
-  +r : float
-  +x : float
-  +g : float
-  +b : float
-  -_yseries : complex
-  -_yshunt : complex
-  +Yseries : complex <<property>>
-  +Yshunt : complex <<property>>
-  --
-  +__init__(name: str, bus1_name: str, bus2_name: str, r: float, x: float, g: float, b: float)
-  -_calc_Yseries() : complex
-  -_calc_Yshunt() : complex
-  +calc_yprim() : pd.DataFrame
-  +__repr__()
+' ============================================================
+' Validation / Test Scripts
+' ============================================================
+
+package "Validation" {
+  class FeederBuilder <<module>> {
+    +build_feeder_network(case_name: str = "Chapter14_Feeder_BaseCase") : Circuit
+  }
+
+  class BaselineTest <<script>> {
+    +uses BASELINE_DATA_DIR
+    +runs base-case validation
+  }
+
+  class Case1Test <<script>> {
+    +uses CASE1_DATA_DIR
+    +runs Case 1 validation
+  }
+
+  class Case2Test <<script>> {
+    +uses CASE2_DATA_DIR
+    +runs Case 2 validation
+  }
 }
 
-class Circuit {
-  +name : str
-  +buses : dict
-  +transformers : dict
-  +transmission_lines : dict
-  +generators : dict
-  +loads : dict
-  +ybus : ndarray
-  +solver : Solver
-  +voltage_vector_polar : list <<property>>
-  +voltage_vector_rectangular : ndarray <<property>>
-  --
-  +__init__(name: str)
-  +add_bus(name, nominal_kv, vpu=1.0, delta=0.0, bus_type=None)
-  +add_transformer(name, bus1_name, bus2_name, r, x)
-  +add_transmission_line(name, bus1_name, bus2_name, r, x, g, b)
-  +add_generator(name, bus1_name, voltage_setpoint, mw_setpoint, x_subtransient=0.0)
-  +add_load(name, bus1_name, mw, mvar)
-  +calc_ybus() : void
-  +calc_ybus_fault() : ndarray
-  +calc_zbus(ybus_fault) : ndarray
-  +calc_fault_current(zbus, faulted_bus_name, prefault_voltage=1.0) : complex
-  +calc_fault_voltages(zbus, faulted_bus_name, prefault_voltage=1.0) : dict
-  +bus_angles() : ndarray
-  +bus_voltages() : ndarray
-  -_real_power_injection(bus, ybus, voltages) : float
-  -_reactive_power_injection(bus, ybus, voltages) : float
-  +compute_power_injection(bus, ybus, voltages) : (float, float)
-  +compute_power_mismatch(buses, ybus, voltages) : ndarray
-  +solve(mode="power_flow", tol=1e-4, max_iter=50, faulted_bus_name=None, prefault_voltage=1.0, verbose=False) : Solver
+' ============================================================
+' Application Entry Point
+' ============================================================
+
+package "Application" {
+  class Main <<module>> {
+    +run_test_script(script_name: str) : bool
+    +main() : void
+  }
 }
 
-class Jacobian {
-  +J : ndarray
-  --
-  +__init__()
-  -_non_slack_buses(buses) : list
-  -_pq_buses(buses) : list
-  +NON_SLACK_BUSES(buses) : list
-  +PQ_BUSES(buses) : list
-  -_power_injections(ybus, angles, voltages) : (ndarray, ndarray)
-  -_build_j1(ybus, angles, voltages, p_buses) : ndarray
-  -_build_j2(ybus, angles, voltages, p_buses, pq_buses) : ndarray
-  -_build_j3(ybus, angles, voltages, pq_buses, p_buses) : ndarray
-  -_build_j4(ybus, angles, voltages, pq_buses) : ndarray
-  +calculate_jacobian(buses, ybus, angles, voltages) : ndarray
-}
+' ============================================================
+' Relationships - Configuration
+' ============================================================
 
-class PowerFlow {
-  -_jac : Jacobian
-  +iterations : int
-  +converged : bool
-  +final_mismatch_max : float
-  --
-  +__init__()
-  +{static} _non_slack_buses(buses) : list
-  +{static} _pq_buses(buses) : list
-  +mismatch_vector(circuit) : ndarray
-  +solve(circuit, tol=0.001, max_iter=50, verbose=False)
-}
+Generator ..> Settings : uses sbase
+Load ..> Settings : uses sbase
+Load ..> AreaScalar : applies scaling
+AreaScalar ..> Bus : reads area_class
 
-class Solver {
-  +{static} VALID_MODES : set
-  -_pf : PowerFlow
-  +mode : str
-  +converged : bool
-  +iterations : int
-  +fault_current : complex
-  +fault_voltages : dict
-  --
-  +__init__(mode: str = "power_flow")
-  +run(circuit, tol=1e-4, max_iter=50, faulted_bus_name=None, prefault_voltage=1.0, verbose=False) : Solver
-  -_run_power_flow(circuit, tol, max_iter, verbose)
-  -_run_fault(circuit, faulted_bus_name, prefault_voltage)
-  +__repr__()
-}
+' ============================================================
+' Relationships - Circuit Composition
+' ============================================================
 
-' Containment
-Circuit "1" *-- "0..*" Bus : contains
-Circuit "1" *-- "0..*" Transformer : contains
-Circuit "1" *-- "0..*" TransmissionLine : contains
-Circuit "1" *-- "0..*" Generator : contains
-Circuit "1" *-- "0..*" Load : contains
-Circuit "1" o-- "0..1" Solver : owns (after solve())
+Circuit "1" *-- "0..*" Bus : buses
+Circuit "1" *-- "0..*" Transformer : transformers
+Circuit "1" *-- "0..*" TransmissionLine : transmission_lines
+Circuit "1" *-- "0..*" Branch : branches
+Circuit "1" *-- "0..*" Generator : generators
+Circuit "1" *-- "0..*" Load : loads
+Circuit "1" *-- "0..*" CapacitorBank : capacitor_banks
+Circuit "1" o-- "0..1" Solver : solver
 
-' Settings usage
-Generator ..> Settings : calc_p()\n(Settings.sbase)
-Load ..> Settings : calc_p/q()\n(Settings.sbase)
+' ============================================================
+' Relationships - Electrical Connectivity
+' ============================================================
 
-' Bus connectivity
-Generator "1" --> "1" Bus : connects to\n(bus1_name)
-Load "1" --> "1" Bus : connects to\n(bus1_name)
-Transformer "1" --> "1" Bus : bus1_name
-Transformer "1" --> "1" Bus : bus2_name
-TransmissionLine "1" --> "1" Bus : bus1_name
-TransmissionLine "1" --> "1" Bus : bus2_name
+Generator --> Bus : bus1_name
+Load --> Bus : bus1_name
+Transformer --> Bus : bus1_name
+Transformer --> Bus : bus2_name
+TransmissionLine --> Bus : bus1_name
+TransmissionLine --> Bus : bus2_name
+Branch --> Bus : from_bus
+Branch --> Bus : to_bus
+CapacitorBank --> Bus : bus1_name
 
-' Solver composition
-Solver "1" *-- "1" PowerFlow : owns
-PowerFlow "1" *-- "1" Jacobian : owns
+' ============================================================
+' Relationships - Solving
+' ============================================================
 
-' Dependencies
-PowerFlow ..> Circuit : solve()\nmismatch_vector()\n(reads/writes buses,\nybus, injections)
-Jacobian ..> Circuit : calculate_jacobian()\n(buses, ybus from\ncircuit state)
-Solver ..> Circuit : run()\n(power flow or\nfault analysis)
+Solver *-- PowerFlow : owns
+PowerFlow *-- Jacobian : owns
+
+Circuit ..> Solver : solve()
+Solver ..> Circuit : run()
+PowerFlow ..> Circuit : solve()
+Jacobian ..> Circuit : uses buses/ybus state
+
+' ============================================================
+' Relationships - File Processing
+' ============================================================
+
+Exporter ..> ExcelFileProcessor : exports sheets
+Exporter ..> ProjectPaths : uses Excel paths
+CompareHelp ..> Circuit : compares results
+CompareHelp ..> ProjectPaths : reads JSON exports
+
+' ============================================================
+' Relationships - Validation Flow
+' ============================================================
+
+FeederBuilder ..> Circuit : builds
+FeederBuilder ..> Bus : resets bus registry
+
+BaselineTest ..> FeederBuilder : build circuit
+BaselineTest ..> CompareHelp : compare to PowerWorld
+BaselineTest ..> ProjectPaths : BASELINE_DATA_DIR
+
+Case1Test ..> FeederBuilder : build circuit
+Case1Test ..> CompareHelp : compare to PowerWorld
+Case1Test ..> ProjectPaths : CASE1_DATA_DIR
+
+Case2Test ..> FeederBuilder : build circuit
+Case2Test ..> CompareHelp : compare to PowerWorld
+Case2Test ..> ProjectPaths : CASE2_DATA_DIR
+
+Main ..> BaselineTest : runs
+Main ..> Case1Test : runs
+Main ..> Case2Test : runs
 
 @enduml

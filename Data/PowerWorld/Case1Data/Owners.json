@@ -1,0 +1,19 @@
+[
+    {
+        "Owner Number": 1,
+        "Owner Name": 1,
+        "Num Buses": 13,
+        "Num Loads": 10,
+        "Num Gens": 1,
+        "Min Bus Num": 1,
+        "Max Bus Num": 13,
+        "Gen MW": 10.16,
+        "Gen Mvar": -1.55,
+        "Gen Max MW": 1000,
+        "Load MW": 10,
+        "Load Mvar": 4.4,
+        "Num Devices": 44,
+        "Num Branches": 14,
+        "Memo": ""
+    }
+]

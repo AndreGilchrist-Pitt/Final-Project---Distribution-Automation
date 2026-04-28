@@ -23,11 +23,17 @@ class PowerFlow:
 
     @staticmethod
     def _non_slack_buses(buses: dict):
-        return [b for b in buses.values() if b.bus_type != "Slack"]
+        return [
+            b for b in buses.values()
+            if b.bus_type != "Slack" and getattr(b, "in_service", True)
+        ]
 
     @staticmethod
     def _pq_buses(buses: dict):
-        return [b for b in buses.values() if b.bus_type == "PQ"]
+        return [
+            b for b in buses.values()
+            if b.bus_type == "PQ" and getattr(b, "in_service", True)
+        ]
 
     def mismatch_vector(self, circuit) -> np.ndarray:
         """Block-ordered mismatch f for current bus state (same order as Jacobian rows)."""
@@ -55,6 +61,13 @@ class PowerFlow:
         for k in range(max_iter):
             v_complex = circuit.voltage_vector_rectangular
             f = circuit.compute_power_mismatch(buses, ybus, v_complex)
+
+            if f.size == 0:
+                raise ValueError(
+                    "Power-flow mismatch vector is empty. "
+                    "Check energized bus detection and slack bus configuration."
+                )
+            
             self.final_mismatch_max = float(np.max(np.abs(f)))
 
             if verbose:
@@ -83,3 +96,6 @@ class PowerFlow:
 
         self.converged = False
         return self
+    @property
+    def Jacobian(self):
+        return self._jac
