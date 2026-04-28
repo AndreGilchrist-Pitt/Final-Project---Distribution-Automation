@@ -1,0 +1,16 @@
+[
+    {
+        "Zone Num": 1,
+        "Zone Name": "Residential",
+        "Load MW": 10,
+        "Load Mvar": 4.4,
+        "Gen MW": 10.16,
+        "Gen Mvar": -1.55,
+        "Dist MW": 0,
+        "Loss MW": 0.16,
+        "Loss Mvar": 0.65,
+        "Int MW": 0,
+        "Int Mvar": 0,
+        "Load Mult MW": 1
+    }
+]

@@ -1,0 +1,17 @@
+[
+    {
+        "Number": 1,
+        "Slack Bus Number": 1,
+        "Slack Bus Name": "1_TransmissionBus",
+        "Slack Bus Area Name": "Residential",
+        "# of Buses": 13,
+        "Solved": "YES",
+        "Energized": "YES",
+        "Gen MW": 10.2,
+        "Gen Mvar": -1.5,
+        "Load MW": 10,
+        "Load Mvar": 4.4,
+        "Scheduled Exports": 0,
+        "DC MW Exports": 0
+    }
+]

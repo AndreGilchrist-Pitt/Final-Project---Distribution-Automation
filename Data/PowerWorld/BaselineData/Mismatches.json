@@ -1,0 +1,119 @@
+[
+    {
+        "Number": 9,
+        "Name": "9com",
+        "Area Name": "Commercial",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 3,
+        "Name": "Right",
+        "Area Name": "Residential",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 13,
+        "Name": "13ind",
+        "Area Name": "Industrial",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 10,
+        "Name": "10res",
+        "Area Name": "Residential",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 11,
+        "Name": "11res",
+        "Area Name": "Residential",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 8,
+        "Name": "8ind",
+        "Area Name": "Industrial",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 12,
+        "Name": "12res",
+        "Area Name": "Residential",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 6,
+        "Name": "6com",
+        "Area Name": "Commercial",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 7,
+        "Name": "7res",
+        "Area Name": "Residential",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 5,
+        "Name": "5ind",
+        "Area Name": "Industrial",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 4,
+        "Name": "4com",
+        "Area Name": "Commercial",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 2,
+        "Name": "Left",
+        "Area Name": "Residential",
+        "Type": "PQ",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    },
+    {
+        "Number": 1,
+        "Name": "1_TransmissionBus",
+        "Area Name": "Residential",
+        "Type": "Slack",
+        "Mismatch MW": 0,
+        "Mismatch Mvar": 0,
+        "Mismatch MVA": 0
+    }
+]

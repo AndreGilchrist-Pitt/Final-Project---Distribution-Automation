@@ -1,0 +1,30 @@
+[
+    {
+        "From Number": 2,
+        "From Name": "Left",
+        "To Number": 1,
+        "To Name": "1_TransmissionBus",
+        "Circuit": 1,
+        "Branch Device Type": "Transformer",
+        "R": 0.1,
+        "X": 0.8,
+        "B": 0,
+        "Lim MVA A": 12,
+        "Lim MVA B": 12,
+        "Lim MVA C": 12
+    },
+    {
+        "From Number": 3,
+        "From Name": "Right",
+        "To Number": 1,
+        "To Name": "1_TransmissionBus",
+        "Circuit": 1,
+        "Branch Device Type": "Transformer",
+        "R": 0.1,
+        "X": 0.8,
+        "B": 0,
+        "Lim MVA A": 12,
+        "Lim MVA B": 12,
+        "Lim MVA C": 12
+    }
+]
