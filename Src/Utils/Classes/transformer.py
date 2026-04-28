@@ -9,6 +9,7 @@ class Transformer:
     and optional off-nominal tap ratio.
     """
 
+    _valid_tap_sides = {"bus1", "bus2"}
     def __init__(
             self,
             name: str,
@@ -18,7 +19,13 @@ class Transformer:
             x: float,
             status: str = "Closed",
             tap: float = 1.0,
+            tap_side: str = "bus1",
     ):
+        if tap_side not in self._valid_tap_sides:
+            raise ValueError(
+                f"Invalid tap_side '{tap_side}'. Valid options: {self._valid_tap_sides}"
+            )
+
         self.name = name
         self.bus1_name = bus1_name
         self.bus2_name = bus2_name
@@ -26,6 +33,7 @@ class Transformer:
         self.x = x
         self.status = status
         self.tap = tap
+        self.tap_side = tap_side
         self._yseries = self._calc_Yseries()
 
     def _calc_Yseries(self):
@@ -44,10 +52,16 @@ class Transformer:
         y = self.Yseries
         labels = [self.bus1_name, self.bus2_name]
 
-        Y11 = y / (a * a)
-        Y12 = -y / a
-        Y21 = -y / a
-        Y22 = y
+        if self.tap_side == "bus1":
+            Y11 = y / (a * a)
+            Y12 = -y / a
+            Y21 = -y / a
+            Y22 = y
+        else:  # tap_side == "bus2"
+            Y11 = y
+            Y12 = -y / a
+            Y21 = -y / a
+            Y22 = y / (a * a)
 
         return pd.DataFrame(
             [[Y11, Y12], [Y21, Y22]],
@@ -58,5 +72,6 @@ class Transformer:
     def __repr__(self):
         return (
             f"Transformer(name='{self.name}', bus1='{self.bus1_name}', "
-            f"bus2='{self.bus2_name}', r={self.r}, x={self.x}, tap={self.tap})"
+            f"bus2='{self.bus2_name}', r={self.r}, x={self.x}, "
+            f"tap={self.tap}, tap_side='{self.tap_side}')"
         )

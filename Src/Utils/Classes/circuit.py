@@ -101,7 +101,7 @@ class Circuit:
         bus = Bus(name, nominal_kv,vpu=vpu,delta=delta, bus_type=bus_type, area_class=area_class)
         self.buses[name] = bus
     def add_transformer(self, name: str, bus1_name: str, bus2_name: str, r: float, x: float, status: str = "Closed",
-                        tap: float = 1.0):
+                        tap: float = 1.0, tap_side: str = "bus1"):
         """
         Add a transformer to the circuit.
 
@@ -112,14 +112,14 @@ class Circuit:
             r: Resistance in per-unit or ohms
             x: Reactance in per-unit or ohms
             tap: Off-nominal tap ratio (default: 1.0)
-
+            tap_side: Which bus the tap is on — "bus1" or "bus2" (default: "bus1")
         Raises:
             ValueError: If a transformer with the same name already exists
         """
         if name in self.transformers:
             raise ValueError(f"Transformer '{name}' already exists in the circuit")
 
-        transformer = Transformer(name, bus1_name, bus2_name, r, x,status,tap=tap)
+        transformer = Transformer(name, bus1_name, bus2_name, r, x,status,tap=tap, tap_side=tap_side)
         self.transformers[name] = transformer
         self.add_branch(name, bus1_name, bus2_name, r, x, branch_type="transformer", status=status)
     def add_transmission_line(self, name: str, bus1_name: str, bus2_name: str,
@@ -475,6 +475,112 @@ class Circuit:
         if name not in self.branches:
             raise ValueError(f"Branch '{name}' not found")
         self.branches[name].close()
+
+    def active_power_delivery_elements(self):
+        """
+        Return the active two-terminal power delivery elements used for loss calculations.
+
+        This should match the same physical elements used in calc_ybus():
+        - transformers from self.transformers
+        - non-transformer branches from self.branches
+        """
+        active_elements = []
+
+        for xfmr in self.transformers.values():
+            if xfmr.status == "Closed" or xfmr.status is True:
+                active_elements.append(xfmr)
+
+        for branch in self.branches.values():
+            if branch.branch_type != "transformer" and branch.is_closed():
+                active_elements.append(branch)
+
+        return active_elements
+
+    def calc_branch_losses(self):
+        """
+        Calculate complex power losses for each active branch/transformer.
+
+        Returns:
+            dict:
+                {
+                    element_name: {
+                        "from_bus": str,
+                        "to_bus": str,
+                        "s_from_to_pu": complex,
+                        "s_to_from_pu": complex,
+                        "loss_pu": complex,
+                        "loss_mw": float,
+                        "loss_mvar": float,
+                    }
+                }
+        """
+        if self.ybus is None:
+            self.calc_ybus()
+
+        voltages = self.voltage_vector_rectangular
+        bus_index = {name: idx for idx, name in enumerate(self.buses)}
+
+        losses = {}
+
+        for element in self.active_power_delivery_elements():
+            yprim = element.calc_yprim()
+
+            bus_names = list(yprim.index)
+            from_bus = bus_names[0]
+            to_bus = bus_names[1]
+
+            i = bus_index[from_bus]
+            j = bus_index[to_bus]
+
+            v_local = np.array([voltages[i], voltages[j]], dtype=complex)
+
+            # Current injected into the element from each terminal
+            i_local = yprim.values @ v_local
+
+            s_from = v_local[0] * np.conj(i_local[0])
+            s_to = v_local[1] * np.conj(i_local[1])
+
+            s_loss = s_from + s_to
+
+            losses[element.name] = {
+                "from_bus": from_bus,
+                "to_bus": to_bus,
+                "s_from_to_pu": s_from,
+                "s_to_from_pu": s_to,
+                "loss_pu": s_loss,
+                "loss_mw": s_loss.real * Settings.sbase,
+                "loss_mvar": s_loss.imag * Settings.sbase,
+            }
+
+        return losses
+
+    def calc_case_losses(self):
+        """
+        Calculate total case losses.
+
+        Returns:
+            tuple:
+                (total_loss_pu, total_loss_mw, total_loss_mvar)
+        """
+        branch_losses = self.calc_branch_losses()
+
+        total_loss_pu = sum(
+            item["loss_pu"] for item in branch_losses.values()
+        )
+
+        total_loss_mw = total_loss_pu.real * Settings.sbase
+        total_loss_mvar = total_loss_pu.imag * Settings.sbase
+
+        return total_loss_pu, total_loss_mw, total_loss_mvar
+
+    def print_case_losses(self):
+        total_loss_pu, total_loss_mw, total_loss_mvar = self.calc_case_losses()
+
+        print("Case Losses")
+        print("-" * 40)
+        print(f"Total Loss: {total_loss_pu.real:.8f} pu")
+        print(f"Total Loss: {total_loss_mw:.6f} MW")
+        print(f"Reactive Loss: {total_loss_mvar:.6f} Mvar")
 if __name__ == "__main__":
     # Validation tests from Milestone 2
     print("=== Moved to MilestoneValidationHelp ===\n")
