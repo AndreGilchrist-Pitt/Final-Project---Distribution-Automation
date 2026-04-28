@@ -1,20 +1,39 @@
-# IntelliJ IDEA
+# IntelliJ IDEA / JetBrains
 .idea/
 *.iml
 *.iws
 *.ipr
 out/
 
-# Java
-*.class
-*.jar
-*.war
-*.ear
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Logs
 *.log
 
-# Build directories
-target/
-build/
+# Jupyter notebooks
+.ipynb_checkpoints/
 
 # OS specific
 .DS_Store
