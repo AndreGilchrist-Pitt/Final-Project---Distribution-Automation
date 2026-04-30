@@ -65,6 +65,10 @@ class PowerFlow:
         self.converged = False
         self.iterations = 0
         self.final_mismatch_max = None
+        if verbose:
+            print()
+            print("Newton-Raphson Results")
+            print("-" * 80)
 
         for k in range(max_iter):
             v_complex = circuit.voltage_vector_rectangular
@@ -79,7 +83,7 @@ class PowerFlow:
             self.final_mismatch_max = float(np.max(np.abs(f)))
 
             if verbose:
-                print(f"  NR iter {k}: max|f| = {self.final_mismatch_max:.6g}")
+                print(f"NR iter {k}: max|f| = {self.final_mismatch_max:.6g}")
 
             if self.final_mismatch_max < tol:
                 self.converged = True

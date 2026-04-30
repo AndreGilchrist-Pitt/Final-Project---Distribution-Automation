@@ -51,13 +51,13 @@ print("After Automatic DA Restoration")
 print("-" * 80)
 circuit.update_bus_energization()
 circuit.print_energization_status()
-
+print()
 circuit.calc_ybus()
 
 powerworld_ybus_bus_names, powerworld_ybus = load_powerworld_ybus_json(
     CASE2_DATA_DIR / "YBus.json"
 )
-
+print()
 compare_ybus(
     circuit=circuit,
     powerworld_ybus=powerworld_ybus,
@@ -69,3 +69,36 @@ solver = circuit.solve(mode="power_flow", tol=1e-6, max_iter=50, verbose=True)
 
 print()
 print("Case 3 Automatic DA Power Flow Result")
+print("-" * 80)
+print(f"Converged : {solver.converged}")
+print(f"Iterations: {solver.iterations}")
+print("-" * 80)
+
+powerworld_buses = load_powerworld_buses_json(
+    CASE2_DATA_DIR / "Buses.json"
+)
+print()
+compare_voltage_vector_polar(
+    circuit=circuit,
+    powerworld_buses=powerworld_buses,
+    voltage_tolerance=1e-4,
+    angle_tolerance=1e-2,
+)
+print()
+powerworld_case_summary = load_powerworld_case_summary_json(
+    CASE2_DATA_DIR / "Case_Summary.json"
+)
+print()
+circuit.print_case_losses()
+print()
+compare_case_losses(
+    circuit=circuit,
+    powerworld_case_summary=powerworld_case_summary,
+    mw_tolerance=1e-3,
+    mvar_tolerance=1e-3,
+)
+print()
+compare_case_summary_counts(
+    circuit=circuit,
+    powerworld_case_summary=powerworld_case_summary,
+)
