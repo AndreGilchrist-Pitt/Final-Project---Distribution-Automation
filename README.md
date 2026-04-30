@@ -729,8 +729,56 @@ distribution automation enhancements.
 
 ## 8. Validation Procedure
 
-### 8.1 Voltage Validation
+The validation scripts compare Python simulator outputs against JSON reference files exported from PowerWorld. Each
+validation script builds the feeder model, applies the required branch statuses for that case, calculates Ybus, solves
+the Newton-Raphson power flow, and then runs comparison helper functions.
 
+The main validation helper functions are:
+
+| Function | Purpose |
+|---|---|
+| `load_powerworld_ybus_json(...)` | Loads the exported PowerWorld `YBus.json` file into a complex NumPy matrix |
+| `compare_ybus(...)` | Compares the simulator Ybus against the PowerWorld YBus matrix |
+| `load_powerworld_buses_json(...)` | Loads exported PowerWorld bus voltage data from `Buses.json` |
+| `compare_voltage_vector_polar(...)` | Compares simulator bus voltage magnitudes and angles against PowerWorld |
+| `load_powerworld_case_summary_json(...)` | Loads exported PowerWorld case totals and equipment counts from `Case_Summary.json` |
+| `compare_case_losses(...)` | Compares simulator MW and Mvar case losses against PowerWorld |
+| `compare_case_summary_counts(...)` | Compares modeled equipment counts, including buses, loads, generators, and switched shunts |
+
+### 8.1 YBus Validation
+
+The simulator Ybus matrix is compared against the PowerWorld `YBus.json` export using:
+```python
+load_powerworld_ybus_json(...)
+compare_ybus(...)
+```
+
+Before comparison, the simulator Ybus is reordered to match the PowerWorld bus order. This prevents false mismatches
+caused only by different bus indexing.
+
+Validation checks:
+
+- Ybus matrix shape
+- every complex matrix entry
+- maximum absolute complex difference
+- per-entry pass/fail status
+- overall pass/fail status
+
+Recommended tolerance:
+```python
+ybus_tolerance = 1e-2
+```
+
+YBus validation is useful because it confirms that branch status, transformer tap modeling, capacitor shunt stamping,
+and topology handling match the PowerWorld case before the Newton-Raphson solve is evaluated.
+
+### 8.2 Voltage Validation
+
+The simulator voltage vector is compared against PowerWorld bus data using:
+```python
+oad_powerworld_buses_json(...)
+compare_voltage_vector_polar(...)
+```
 The simulator voltage vector is compared against PowerWorld bus data.
 
 PowerWorld reports voltage in polar form:
@@ -759,11 +807,12 @@ voltage_tolerance = 1e-4
 angle_tolerance = 1e-2
 ```
 
-### 8.2 Case Loss Validation
+### 8.3 Case Loss Validation
 
-Case losses are compared using:
+Case losses are compared against the PowerWorld case summary using:
 
 ```python
+load_powerworld_case_summary_json(...)
 compare_case_losses(...)
 ```
 
@@ -786,10 +835,14 @@ For the restoration case, the expected PowerWorld real-power loss is approximate
 0.336 MW
 ```
 
-### 8.3 Equipment Count Validation
+### 8.4 Equipment Count Validation
 
-The simulator also compares the number of modeled devices against PowerWorld:
+The simulator also compares the number of modeled devices against PowerWorld using:
+```python
+compare_case_summary_counts(...)
+```
 
+Validation checks include:
 - buses
 - loads
 - generators
@@ -797,7 +850,7 @@ The simulator also compares the number of modeled devices against PowerWorld:
 
 This confirms that the same major system elements are represented in both tools.
 
-### 8.4 Automatic DA Validation
+### 8.5 Automatic DA Validation
 
 The automatic DA validation confirms that:
 
