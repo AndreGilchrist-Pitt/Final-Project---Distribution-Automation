@@ -52,6 +52,7 @@ def main() -> None:
         "baseline_test.py",
         "case1_test.py",
         "case2_test.py",
+        "case3_test.py",
     ]
 
     results = {}

@@ -79,6 +79,11 @@ class Circuit:
                     f"Capacitor bank '{cap.name}' references bus '{cap.bus1_name}' not in circuit"
                 )
 
+            bus = self.buses[cap.bus1_name]
+
+            if not getattr(bus, "in_service", True):
+                continue
+
             i = bus_index[cap.bus1_name]
             self.ybus[i, i] += 1j * cap.b_shunt_pu
 
@@ -267,23 +272,18 @@ class Circuit:
 
     def compute_power_mismatch(self, buses: dict, ybus, voltages) -> np.ndarray:
         """
-        Compute the power mismatch vector f for all non-slack buses.
+        Compute the power mismatch vector f for energized buses only.
 
-        ΔP_i = P_spec - P_calc  (all non-slack buses)
-        ΔQ_i = Q_spec - Q_calc  (PQ buses only)
+        ΔP_i = P_spec - P_calc  for energized non-slack buses
+        ΔQ_i = Q_spec - Q_calc  for energized PQ buses only
 
-        Args:
-            buses: Dictionary of bus objects {name: Bus}
-            ybus: System admittance matrix
-            voltages: Complex voltage vector (per-unit)
-
-        Returns:
-            f: list of mismatches [ΔP (non-slack), ΔQ (PQ only)]
+        De-energized/islanded buses are excluded from the Newton-Raphson solve.
         """
         specs = {bus_name: [0.0, 0.0] for bus_name in buses}
 
         for gen in self.generators.values():
             bus = self.buses[gen.bus1_name]
+
             if getattr(bus, "in_service", True):
                 specs[gen.bus1_name][0] += gen.p
 
@@ -296,13 +296,11 @@ class Circuit:
             specs[load.bus1_name][0] -= load.p
             specs[load.bus1_name][1] -= load.q
 
-        # Only energized non-slack buses get ΔP equations
         non_slack_buses = [
             b for b in buses.values()
             if b.bus_type != "Slack" and getattr(b, "in_service", True)
         ]
 
-        # Only energized PQ buses get ΔQ equations
         pq_buses = [
             b for b in buses.values()
             if b.bus_type == "PQ" and getattr(b, "in_service", True)
@@ -429,12 +427,14 @@ class Circuit:
         """
         Run power flow or fault analysis on this circuit.
 
-        Power flow uses self.ybus (lines + transformers).
-        Fault study uses self.ybus_fault (adds generator subtransient reactances).
+        This method does not automatically change switch states.
+        Any manual or automatic distribution automation switching should be
+        applied before calling solve().
         """
         if mode == "power_flow":
             self.update_bus_energization()
             self.calc_ybus()
+
         elif mode == "fault":
             self.calc_ybus_fault()
 
@@ -496,21 +496,38 @@ class Circuit:
 
     def active_power_delivery_elements(self):
         """
-        Return the active two-terminal power delivery elements used for loss calculations.
+        Return active two-terminal elements connected to energized buses only.
 
-        This should match the same physical elements used in calc_ybus():
-        - transformers from self.transformers
-        - non-transformer branches from self.branches
+        This should match the same physical elements used in calc_ybus().
         """
         active_elements = []
 
         for xfmr in self.transformers.values():
-            if xfmr.status == "Closed" or xfmr.status is True:
-                active_elements.append(xfmr)
+            if not (xfmr.status == "Closed" or xfmr.status is True):
+                continue
+
+            if not getattr(self.buses[xfmr.bus1_name], "in_service", True):
+                continue
+
+            if not getattr(self.buses[xfmr.bus2_name], "in_service", True):
+                continue
+
+            active_elements.append(xfmr)
 
         for branch in self.branches.values():
-            if branch.branch_type != "transformer" and branch.is_closed():
-                active_elements.append(branch)
+            if branch.branch_type == "transformer":
+                continue
+
+            if not branch.is_closed():
+                continue
+
+            if not getattr(self.buses[branch.from_bus], "in_service", True):
+                continue
+
+            if not getattr(self.buses[branch.to_bus], "in_service", True):
+                continue
+
+            active_elements.append(branch)
 
         return active_elements
 
@@ -605,7 +622,7 @@ class Circuit:
         Return all buses reachable from any Slack bus through closed branches.
 
         Buses not returned by this function are de-energized/islanded
-        from the source and should not be included in the power-flow solve.
+        from the source and should not be included in the active power-flow solve.
         """
         slack_buses = [
             bus.name for bus in self.buses.values()
@@ -615,14 +632,7 @@ class Circuit:
         if not slack_buses:
             raise ValueError("No Slack bus found in circuit.")
 
-        adjacency = {bus_name: set() for bus_name in self.buses}
-
-        for branch in self.branches.values():
-            if not branch.is_closed():
-                continue
-
-            adjacency[branch.from_bus].add(branch.to_bus)
-            adjacency[branch.to_bus].add(branch.from_bus)
+        neighbors = self.build_neighbor_map(closed_only=True)
 
         energized = set()
         stack = list(slack_buses)
@@ -635,7 +645,7 @@ class Circuit:
 
             energized.add(current)
 
-            for neighbor in adjacency[current]:
+            for neighbor in neighbors[current]:
                 if neighbor not in energized:
                     stack.append(neighbor)
 
@@ -645,15 +655,32 @@ class Circuit:
         """
         Update each bus with an in_service flag based on source connectivity.
 
+        Energized buses:
+            in_service = True
+            If voltage was previously forced to 0.0 because the bus was de-energized,
+            reset it to a valid Newton-Raphson starting guess.
+
+        De-energized buses:
+            in_service = False
+            vpu = 0.0
+            delta = 0.0
+
         Returns:
-            energized: set of energized bus names
+            Set of energized bus names.
         """
         energized = self.find_energized_buses()
 
         for bus in self.buses.values():
             bus.in_service = bus.name in energized
 
-            if not bus.in_service:
+            if bus.in_service:
+                # If this bus was previously de-energized, its voltage may still be 0.0.
+                # Newton-Raphson cannot use a zero voltage magnitude for an active PQ bus.
+                if np.isclose(bus.vpu, 0.0):
+                    bus.vpu = 1.0
+                    bus.delta = 0.0
+
+            else:
                 bus.vpu = 0.0
                 bus.delta = 0.0
 
@@ -820,5 +847,302 @@ class Circuit:
 
         print("=" * 80)
 
+    def build_neighbor_map(self, closed_only: bool = True) -> dict[str, set[str]]:
+        """
+        Build a bus-neighbor map.
 
-    
+        Args:
+            closed_only:
+                If True, only closed branches are included.
+                If False, all branches are included.
+
+        Returns:
+            Dictionary mapping each bus name to a set of neighboring bus names.
+        """
+        neighbors = {bus_name: set() for bus_name in self.buses}
+
+        for branch in self.branches.values():
+            if closed_only and not branch.is_closed():
+                continue
+
+            neighbors[branch.from_bus].add(branch.to_bus)
+            neighbors[branch.to_bus].add(branch.from_bus)
+
+        return neighbors
+
+    def find_deenergized_buses(self) -> set[str]:
+        """
+        Return all buses that are not reachable from any Slack bus through closed branches.
+        """
+        energized = self.find_energized_buses()
+        return set(self.buses.keys()) - energized
+
+    def print_energization_status(self) -> None:
+        """
+        Print whether each bus is energized or de-energized.
+        """
+        energized = self.find_energized_buses()
+
+        print("Bus Energization Status")
+        print("-" * 80)
+
+        for bus in self.buses.values():
+            status = "Energized" if bus.name in energized else "De-energized"
+            print(f"{bus.name:20s} {status}")
+
+    def find_open_boundary_switches(
+            self,
+            faulted_buses: set[str] | None = None,
+            allowed_branch_types: set[str] | None = None,
+    ):
+        """
+        Find open branches that connect energized buses to de-energized buses.
+
+        These are candidate restoration switches.
+
+        Args:
+            faulted_buses:
+                Buses that must not be re-energized.
+
+            allowed_branch_types:
+                Branch types allowed to be used for restoration.
+                Defaults to {"tie_switch", "breaker", "sectionalizer"}.
+
+        Returns:
+            List of candidate Branch objects.
+        """
+        if faulted_buses is None:
+            faulted_buses = set()
+
+        if allowed_branch_types is None:
+            allowed_branch_types = {"tie_switch", "breaker", "sectionalizer"}
+
+        energized = self.find_energized_buses()
+        deenergized = set(self.buses.keys()) - energized
+
+        candidates = []
+
+        for branch in self.branches.values():
+            if branch.is_closed():
+                continue
+
+            if branch.branch_type not in allowed_branch_types:
+                continue
+
+            a = branch.from_bus
+            b = branch.to_bus
+
+            a_energized = a in energized
+            b_energized = b in energized
+            a_deenergized = a in deenergized
+            b_deenergized = b in deenergized
+
+            crosses_boundary = (
+                    (a_energized and b_deenergized) or
+                    (b_energized and a_deenergized)
+            )
+
+            if not crosses_boundary:
+                continue
+
+            # Do not directly close into a known faulted bus.
+            if a in faulted_buses or b in faulted_buses:
+                continue
+
+            candidates.append(branch)
+
+        return candidates
+
+    def evaluate_neighbor_restoration_candidate(
+            self,
+            branch_name: str,
+            faulted_buses: set[str],
+    ):
+        """
+        Temporarily close a candidate branch and evaluate restoration impact.
+
+        Args:
+            branch_name:
+                Name of the open candidate branch.
+
+            faulted_buses:
+                Buses that must remain de-energized.
+
+        Returns:
+            Dictionary describing the restoration result.
+        """
+        if branch_name not in self.branches:
+            raise ValueError(f"Branch '{branch_name}' not found.")
+
+        branch = self.branches[branch_name]
+
+        if branch.is_closed():
+            raise ValueError(f"Branch '{branch_name}' is already closed.")
+
+        before_energized = self.find_energized_buses()
+        before_deenergized = set(self.buses.keys()) - before_energized
+
+        # Temporarily close candidate.
+        branch.close()
+        self.ybus = None
+
+        after_energized = self.find_energized_buses()
+        after_deenergized = set(self.buses.keys()) - after_energized
+
+        restored_buses = after_energized - before_energized
+        fault_reenergized = faulted_buses & after_energized
+
+        # Restore original state.
+        branch.open()
+        self.ybus = None
+
+        valid_topology = (
+                len(restored_buses) > 0 and
+                len(fault_reenergized) == 0
+        )
+
+        return {
+            "branch_name": branch.name,
+            "from_bus": branch.from_bus,
+            "to_bus": branch.to_bus,
+            "branch_type": branch.branch_type,
+            "before_energized": before_energized,
+            "before_deenergized": before_deenergized,
+            "after_energized": after_energized,
+            "after_deenergized": after_deenergized,
+            "restored_buses": restored_buses,
+            "fault_reenergized": fault_reenergized,
+            "valid_topology": valid_topology,
+        }
+
+    def auto_restore_by_neighbors(
+            self,
+            faulted_buses: set[str],
+            allowed_branch_types: set[str] | None = None,
+    ):
+        """
+        Automatically restore healthy de-energized buses by closing an open branch
+        that connects an energized region to a de-energized region.
+
+        The method rejects candidates that would re-energize faulted buses.
+
+        Args:
+            faulted_buses:
+                Set of buses that must remain de-energized.
+
+            allowed_branch_types:
+                Branch types allowed for restoration.
+                Defaults to {"tie_switch", "breaker", "sectionalizer"}.
+
+        Returns:
+            Dictionary with selected restoration result, or None if no valid
+            restoration option is found.
+        """
+        candidates = self.find_open_boundary_switches(
+            faulted_buses=faulted_buses,
+            allowed_branch_types=allowed_branch_types,
+        )
+
+        if not candidates:
+            return None
+
+        best_result = None
+
+        for branch in candidates:
+            result = self.evaluate_neighbor_restoration_candidate(
+                branch_name=branch.name,
+                faulted_buses=faulted_buses,
+            )
+
+            if not result["valid_topology"]:
+                continue
+
+            if best_result is None:
+                best_result = result
+            elif len(result["restored_buses"]) > len(best_result["restored_buses"]):
+                best_result = result
+
+        if best_result is None:
+            return None
+
+        # Apply selected restoration action.
+        self.close_branch(best_result["branch_name"])
+
+        # Update bus statuses after applying restoration.
+        self.update_bus_energization()
+
+        return best_result
+
+    def apply_distribution_automation(
+            self,
+            enabled: bool = False,
+            faulted_buses: set[str] | None = None,
+            allowed_branch_types: set[str] | None = None,
+    ):
+        """
+        Optionally apply automatic distribution automation restoration.
+
+        If enabled=False, this method does nothing. This allows existing
+        validation cases to run without automatic switching.
+
+        Args:
+            enabled:
+                If True, run automatic restoration logic.
+                If False, leave branch statuses unchanged.
+
+            faulted_buses:
+                Buses that must remain de-energized. Example: {"9com"}.
+
+            allowed_branch_types:
+                Branch types allowed for automatic restoration.
+                Example: {"tie_switch"}.
+
+        Returns:
+            Restoration result dictionary, or None.
+        """
+        if not enabled:
+            return None
+
+        if faulted_buses is None:
+            faulted_buses = set()
+
+        if allowed_branch_types is None:
+            allowed_branch_types = {"tie_switch"}
+
+        return self.auto_restore_by_neighbors(
+            faulted_buses=faulted_buses,
+            allowed_branch_types=allowed_branch_types,
+        )
+
+    def print_restoration_result(self, result: dict | None) -> None:
+        """
+        Print the result of an automatic restoration attempt.
+        """
+        print("Distribution Automation Restoration Result")
+        print("-" * 80)
+
+        if result is None:
+            print("No valid restoration switching action found.")
+            return
+
+        print(f"Selected branch : {result['branch_name']}")
+        print(f"From bus        : {result['from_bus']}")
+        print(f"To bus          : {result['to_bus']}")
+        print(f"Branch type     : {result['branch_type']}")
+        print(f"Valid topology  : {result['valid_topology']}")
+
+        print()
+        print("Restored buses:")
+        if result["restored_buses"]:
+            for bus in sorted(result["restored_buses"]):
+                print(f"  {bus}")
+        else:
+            print("  None")
+
+        print()
+        print("Faulted buses re-energized:")
+        if result["fault_reenergized"]:
+            for bus in sorted(result["fault_reenergized"]):
+                print(f"  {bus}")
+        else:
+            print("  None")

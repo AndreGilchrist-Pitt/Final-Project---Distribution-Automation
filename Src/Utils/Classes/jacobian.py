@@ -96,6 +96,11 @@ class Jacobian:
                 delta_ik = angles[i] - angles[k]
 
                 if i == k:
+                    if np.isclose(Vi, 0.0):
+                        raise ValueError(
+                            f"Jacobian J2 received zero-voltage active bus '{bus_i.name}'. "
+                            "This bus should have been excluded by in_service filtering."
+                        )
                     Gii = ybus[i, i].real
                     J2[r, c] = (P[i] / Vi) + Gii * Vi
                 else:
@@ -148,6 +153,11 @@ class Jacobian:
                 delta_ik = angles[i] - angles[k]
 
                 if i == k:
+                    if np.isclose(Vi, 0.0):
+                        raise ValueError(
+                            f"Jacobian J4 received zero-voltage active PQ bus '{bus_i.name}'. "
+                            "This bus should have been excluded by in_service filtering."
+                        )
                     Bii = ybus[i, i].imag
                     J4[r, c] = (Q[i] / Vi) - Bii * Vi
                 else:

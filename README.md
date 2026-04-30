@@ -2,20 +2,19 @@
 
 ## System Requirements
 
-This project is written in Python and can be run on Windows, Linux, or WSL. The simulator does not require PowerWorld to
-run, but PowerWorld was used as the reference tool for validation.
+This project is written in Python and can be run on Windows, Linux, macOS, or WSL. The simulator does not require
+PowerWorld to run. PowerWorld was used as the reference tool for validation.
 
 ### Required Software
 
-```bash
-python -m pip install -r requirements.txt
-```
+- Python 3.10 or newer
+- `pip`
+- Git
+- A terminal or command prompt
 
 ### Required Python Packages
 
 The required Python packages are listed in `requirements.txt`.
-
-At minimum, the project requires:
 
 ```text
 numpy
@@ -23,18 +22,55 @@ pandas
 openpyxl
 ```
 
+Install dependencies with:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### Recommended Virtual Environment Setup
+
+All commands should be run from the project root directory, which contains `Src/`, `Data/`, `README.md`, and
+`requirements.txt`.
+
+Windows PowerShell:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Linux, macOS, or WSL:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+On Ubuntu/WSL, if virtual environment creation fails with `ensurepip is not available`, install the venv package and
+recreate the environment:
+
+```bash
+sudo apt update
+sudo apt install python3.10-venv
+```
+
 ## 1. Project Overview
 
 This project extends the original Python-based Newton-Raphson power flow simulator into a distribution automation study
 tool. The original simulator was capable of solving steady-state power flow for a connected transmission-style network.
 The enhanced version adds distribution-feeder modeling features required to study feeder switching, restoration,
-switched shunt capacitor support, transformer tap regulation, and de-energized bus handling.
+switched shunt capacitor support, transformer tap regulation, automatic tie-switch restoration, and de-energized bus
+handling.
 
 The enhancement is based on a Chapter 14-style distribution feeder case modeled in PowerWorld. The feeder includes a 138
 kV transmission source bus, two 13.8 kV distribution source buses, two substation transformers, radial feeder sections,
 normally open tie switches, customer loads, and switched capacitor banks. The simulator was validated by comparing
 solved bus voltage magnitudes, voltage angles, equipment counts, and case losses against PowerWorld reference outputs.
-
 ## 2. Purpose
 
 The purpose of this enhancement is to make the simulator capable of analyzing distribution automation behavior rather
@@ -48,13 +84,16 @@ The enhancement allows the user to:
 4. Model transformer off-nominal tap behavior.
 5. Detect de-energized buses caused by switching operations.
 6. Exclude islanded buses from the Newton-Raphson solve.
-7. Compare Python simulator results against PowerWorld.
-8. Calculate total case losses and branch losses.
+7. Automatically select a restoration tie switch using network-neighbor logic.
+8. Keep faulted buses isolated while restoring healthy de-energized buses.
+9. Compare Python simulator results against PowerWorld.
+10. Calculate total case losses and branch losses.
 
 This is important because distribution automation studies require topology changes. In a distribution feeder, opening
 and closing switches can isolate a faulted section, restore service to healthy downstream customers, or intentionally
 change the feeder operating configuration. A power flow solver that assumes every bus is always energized will fail when
-switching creates isolated buses. This project adds the required topology awareness.
+switching creates isolated buses. This project adds the required topology awareness and optional automatic switching
+capability.
 
 ## 3. Theoretical Background
 
@@ -150,8 +189,8 @@ Each branch has a status:
 - `Closed`: included in Ybus
 - `Open`: excluded from Ybus
 
-This makes feeder reconfiguration possible. For example, opening a feeder section removes that path from the electrical
-network. Closing a tie switch can restore service to buses through an alternate path.
+This makes feeder reconfiguration possible. Opening a branch removes that path from the electrical network. Closing a
+tie switch can restore service to buses through an alternate path.
 
 ### 3.4 Transformer Off-Nominal Taps
 
@@ -222,8 +261,8 @@ when the local bus voltage is above 1.0 pu.
 During distribution automation switching, a bus may become disconnected from the source. If the solver tries to include
 that isolated bus in the Newton-Raphson equations, the Jacobian can become singular.
 
-To fix this, the simulator now identifies energized buses by tracing closed branches from the slack bus. Buses that
-cannot be reached from a slack bus are marked as de-energized.
+To fix this, the simulator identifies energized buses by tracing closed branches from the slack bus. Buses that cannot
+be reached from a slack bus are marked as de-energized.
 
 De-energized buses are:
 
@@ -235,9 +274,37 @@ De-energized buses are:
 - excluded from load injection calculations
 - excluded from active branch-loss calculations
 
-This allows the simulator to solve restoration cases where one or more buses are outaged while the rest of the feeder
-remains energized.
+If a previously de-energized bus is restored, its voltage magnitude is reset to a valid Newton-Raphson starting guess
+before solving. This prevents restored buses from re-entering the power-flow solve with a zero voltage magnitude.
 
+### 3.7 Automatic Neighbor-Based Distribution Automation Restoration
+
+The automatic restoration feature represents the feeder as a graph:
+
+- buses are graph nodes
+- branches are graph edges
+- closed branches define the currently energized network
+- open tie switches are possible restoration paths
+
+The algorithm identifies de-energized buses and then searches for open switches that connect an energized bus to a
+de-energized region. Candidate switches are temporarily evaluated. A candidate is accepted only if it restores healthy
+buses and does not re-energize a bus listed in `faulted_buses`.
+
+For the validated automatic restoration case, `9com` is treated as the faulted bus. The branches around it are opened to
+isolate it:
+
+```text
+L_Right_9com  = Open
+L_9com_10res  = Open
+```
+
+The algorithm then selects the open lower tie:
+
+```text
+L_8ind_13ind = Closed
+```
+
+This restores `10res`, `11res`, `12res`, and `13ind`, while keeping `9com` de-energized.
 ## 4. Enhancement Summary
 
 The following major features were added:
@@ -250,6 +317,9 @@ The following major features were added:
 | Switched capacitor bank model | Adds voltage-dependent reactive support through Ybus shunt stamping |
 | Energized-bus detection | Finds buses connected to the slack source through closed paths |
 | De-energized bus handling | Prevents singular Jacobian errors when buses are isolated |
+| Restored-bus voltage reinitialization | Resets restored buses from 0.0 pu to a valid starting guess |
+| Optional automatic DA switching | Automatically closes a valid tie switch only when enabled |
+| Faulted-bus exclusion | Prevents automatic switching from re-energizing known faulted buses |
 | Case-loss calculation | Computes total MW and Mvar losses from branch terminal powers |
 | PowerWorld validation tools | Compares bus voltage magnitude, angle, losses, and model counts |
 
@@ -392,7 +462,30 @@ Example:
 circuit.add_capacitor_bank("Cap_5ind", "5ind", 1.0, status="Closed")
 ```
 
-### 5.8 PowerWorld Validation Data
+### 5.8 Distribution Automation Inputs
+
+Automatic restoration is optional. It is enabled by an input parameter such as:
+
+```python
+AUTO_RESTORE = True
+```
+
+The automatic DA routine also requires a set of faulted buses that must remain isolated:
+
+```python
+faulted_buses = {"9com"}
+```
+
+Restoration candidates can be limited by branch type:
+
+```python
+allowed_branch_types = {"tie_switch"}
+```
+
+When automatic restoration is disabled, the simulator preserves manually assigned branch statuses and runs the previous
+validation cases without automatic switching.
+
+### 5.9 PowerWorld Validation Data
 
 The validation scripts use JSON files exported from PowerWorld case-information displays. These exported files are
 stored under the PowerWorld data directories for each validation case:
@@ -441,7 +534,24 @@ For de-energized buses, the simulator reports:
 9com                  0.00000    0.00
 ```
 
-### 6.3 Case Losses
+### 6.3 Distribution Automation Restoration Results
+
+When automatic DA is enabled, the simulator prints the selected restoration branch, restored buses, and any faulted
+buses that were accidentally re-energized.
+
+Expected automatic restoration result for the validated case:
+
+```text
+Selected branch : L_8ind_13ind
+Restored buses:
+  10res
+  11res
+  12res
+  13ind
+Faulted buses re-energized:
+  None
+```
+### 6.4 Case Losses
 
 Case losses are calculated by summing the complex losses in each active branch:
 
@@ -471,7 +581,7 @@ Total Loss: 0.161022 MW
 Reactive Loss: 0.647004 Mvar
 ```
 
-### 6.4 Validation Results
+### 6.5 Validation Results
 
 The validation scripts compare Python results against PowerWorld reference data and report pass/fail status for:
 
@@ -559,7 +669,49 @@ This case verifies that the simulator can:
 In the validated restoration case, the solver converged in 3 iterations and calculated approximately `0.336278 MW` of
 real losses. This agrees with the PowerWorld one-line display for the restoration configuration.
 
-### 7.5 Legacy Test Case
+### 7.5 Automatic Case 2 DA Restoration Validation
+
+```bash
+python -m Src.Validation.TestScripts.case3_test
+```
+
+Automatic Case 2 starts with the faulted section isolated and the restoration tie open. The automatic DA algorithm then
+selects the restoration tie based on network-neighbor logic.
+
+Initial automatic DA topology:
+
+```text
+Tie_Left_Right  = Closed
+L_Right_9com    = Open
+L_9com_10res    = Open
+L_8ind_13ind    = Open
+```
+
+The automatic DA algorithm selects:
+
+```text
+L_8ind_13ind = Closed
+```
+
+Validated automatic DA result:
+
+```text
+9com  = De-energized
+10res = Restored
+11res = Restored
+12res = Restored
+13ind = Restored
+```
+
+In the validated automatic restoration case, the solver converged in 3 iterations. The simulator matched the PowerWorld
+voltage and angle reference data within tolerance, and the calculated losses were:
+
+```text
+Losses MW   = 0.336278
+Losses Mvar = 0.964645
+```
+
+### 7.6 Legacy Test Case
 
 The original Project 2 PowerWorld simulator test case can still be run as a legacy compatibility check. This case is
 included to confirm that the enhanced simulator remains backward-compatible with the earlier Project 2 model.
@@ -645,6 +797,20 @@ The simulator also compares the number of modeled devices against PowerWorld:
 
 This confirms that the same major system elements are represented in both tools.
 
+### 8.4 Automatic DA Validation
+
+The automatic DA validation confirms that:
+
+1. the algorithm identifies de-energized buses before restoration
+2. the algorithm selects an open tie switch connecting energized and de-energized regions
+3. the algorithm does not re-energize the faulted bus
+4. restored buses receive nonzero voltage starting guesses before Newton-Raphson
+5. the post-restoration power flow converges
+6. post-restoration voltages, angles, and losses match PowerWorld reference values
+
+In the validated case, the maximum voltage error was less than `1e-4 pu`, the maximum angle error was less than
+`1e-2 deg`, and both MW and Mvar loss errors were less than `0.001`.
+
 ## 9. Important Implementation Details
 
 ### 9.1 Branch Status and Ybus
@@ -676,7 +842,20 @@ The power-flow solver must use the same energized-bus filtering in three places:
 If one of these still includes a de-energized bus, the Jacobian can become singular or the mismatch and Jacobian
 dimensions can become inconsistent.
 
-### 9.3 Capacitor Banks
+### 9.3 Restored-Bus Voltage Reinitialization
+
+When a bus is de-energized, its voltage is set to 0.0 pu. If that bus is later restored through automatic switching, it
+must be given a valid initial voltage guess before Newton-Raphson. The simulator resets a restored bus with zero voltage
+to:
+
+```python
+bus.vpu = 1.0
+bus.delta = 0.0
+```
+
+This prevents active restored buses from entering the Jacobian with zero voltage magnitude.
+
+### 9.4 Capacitor Banks
 
 Capacitor banks are not modeled as fixed Q injections. They are modeled as Ybus shunts. This avoids double-counting and
 matches PowerWorld switched-shunt behavior.
@@ -689,11 +868,23 @@ Ybus[i, i] += 1j * cap.b_shunt_pu
 
 Do not also add capacitor reactive power directly to the mismatch vector.
 
-### 9.4 Slack Generator
+### 9.5 Slack Generator
 
 The upstream source is represented by the slack bus at `1_TransmissionBus`. A generator object is also included for
 equipment-count consistency with PowerWorld, but the generator MW setpoint is not treated as a fixed dispatch. The slack
 bus supplies total load plus losses after convergence.
+
+### 9.6 Optional Automatic DA Switching
+
+Automatic switching is not performed inside the power-flow solver. It is applied only when enabled through an input
+parameter such as:
+
+```python
+AUTO_RESTORE = True
+```
+
+When `AUTO_RESTORE = False`, the simulator preserves manually assigned branch statuses. This keeps the baseline, Case 1,
+manual Case 2, and legacy tests independent of the automatic restoration logic.
 
 ## 10. Known Limitations
 
@@ -702,28 +893,30 @@ The current enhancement focuses on steady-state distribution automation behavior
 - dynamic relay timing
 - recloser sequences
 - transient fault currents through protection devices
-- automatic optimization of switching actions
+- protection coordination
+- automatic optimization of all possible switching plans
 - automatic capacitor control logic
 - DER inverter controls
 - unbalanced three-phase distribution modeling
 - detailed secondary distribution systems
 
 The model is a positive-sequence, steady-state power flow approximation. It is appropriate for verifying feeder
-topology, voltage profile, switched shunt behavior, and approximate loss impacts against PowerWorld.
+topology, voltage profile, switched shunt behavior, automatic restoration switching, and approximate loss impacts
+against PowerWorld.
 
 ## 11. Suggested Future Work
 
 Future enhancements could include:
 
-1. automatic fault isolation and service restoration logic
+1. automatic fault location and isolation logic
 2. automatic sectionalizer operation
-3. Volt/VAR control for switched capacitors
-4. DER integration, such as solar PV or battery storage
-5. time-series load and DER simulation
-6. branch overload checking using MVA limits
-7. reliability metrics, such as customers interrupted and load restored
-8. graphical one-line visualization
-9. comparison of restored load before and after switching
+3. ranking multiple restoration plans by voltage, losses, and branch loading
+4. Volt/VAR control for switched capacitors
+5. DER integration, such as solar PV or battery storage
+6. time-series load and DER simulation
+7. branch overload checking using MVA limits
+8. reliability metrics, such as customers interrupted and load restored
+9. graphical one-line visualization
 10. exportable validation reports
 
 ## 12. References

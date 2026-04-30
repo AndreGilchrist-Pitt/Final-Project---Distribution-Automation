@@ -1,4 +1,4 @@
-from Src.Paths.paths import CASE1_DATA_DIR
+from Src.Paths.paths import CASE2_DATA_DIR
 from Src.Utils.Classes.settings import Settings
 from Src.Utils.Classes.areascalar import AreaScalar
 from Src.Validation.TestScripts.feeder_builder import build_feeder_network
@@ -14,22 +14,48 @@ from Src.Utils.ProcessFiles.compare_help import (
 
 Settings(freq=60.0, sbase=100.0)
 AreaScalar(res_scale=1.0, com_scale=1.0, ind_scale=1.0)
-AUTO_RESTORE = False
-circuit = build_feeder_network()
-circuit.open_branch("Tie_Left_Right")
+
+AUTO_RESTORE = True
+
+circuit = build_feeder_network("Case3: Case2_Auto_DA")
+
+# Match the PowerWorld Case 2 source-side topology.
+circuit.close_branch("Tie_Left_Right")
+
+# Leave the bottom restoration tie open initially.
+# The DA logic should decide to close this.
 circuit.open_branch("L_8ind_13ind")
-circuit.print_elements()
+
+# Fault isolation around 9com.
+# These two open branches isolate 9com from both sides.
+circuit.open_branch("L_Right_9com")
+circuit.open_branch("L_9com_10res")
+
+print()
+print("Before Automatic DA Restoration")
+print("-" * 80)
+circuit.update_bus_energization()
+circuit.print_energization_status()
 
 restoration_result = circuit.apply_distribution_automation(
     enabled=AUTO_RESTORE,
-    faulted_buses=set(),
+    faulted_buses={"9com"},
     allowed_branch_types={"tie_switch"},
 )
+
+print()
+circuit.print_restoration_result(restoration_result)
+
+print()
+print("After Automatic DA Restoration")
+print("-" * 80)
+circuit.update_bus_energization()
+circuit.print_energization_status()
 
 circuit.calc_ybus()
 
 powerworld_ybus_bus_names, powerworld_ybus = load_powerworld_ybus_json(
-    CASE1_DATA_DIR / "YBus.json"
+    CASE2_DATA_DIR / "YBus.json"
 )
 
 compare_ybus(
@@ -42,12 +68,4 @@ compare_ybus(
 solver = circuit.solve(mode="power_flow", tol=1e-6, max_iter=50, verbose=True)
 
 print()
-print("Case 1 Power Flow Result")
-print("-" * 80)
-print(f"Converged : {solver.converged}")
-print(f"Iterations: {solver.iterations}")
-print("-" * 80)
-
-powerworld_buses = load_powerworld_buses_json(
-    CASE1_DATA_DIR / "Buses.json"
-)
+print("Case 3 Automatic DA Power Flow Result")
